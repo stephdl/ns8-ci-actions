@@ -180,15 +180,15 @@ asserts, then `remove-module`.
 | `path` | | subdirectory holding the module |
 | `repo_ref` | `github.sha` | caller ref to check out |
 | `runs_on` | `ubuntu-24.04` | must provide `/dev/kvm` |
-| `vm_mem` | `6144` | guest memory, MiB |
+| `vm_mem` | `8192` | guest memory, MiB |
 | `vm_cpus` | `4` | guest vCPUs |
 | `disk_size` | `30G` | guest disk after resize |
 | `timeout_minutes` | `60` | |
 | `version_tag` | branch under test | names the image tag and the artifact. `workflow_run` callers must pass it |
 | `debug_shell` | `false` | tmate shell when the suite fails |
 
-`vm_mem` is the input worth setting: a DNS cache is happy with 6 GB, a module
-starting several JVMs is not.
+`vm_mem` is the input worth setting: the runner has 15 GiB and uses about 1.5 of
+them, so 8 leaves room, but a module starting several JVMs wants more.
 
 ## Secrets
 
