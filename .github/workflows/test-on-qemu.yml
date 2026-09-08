@@ -117,13 +117,20 @@ jobs:
           ref: ${{ inputs.repo_ref }}
 
       - name: Derive the version tag
+        env:
+          # Through the environment, never interpolated into the script: on a
+          # pull request from a fork the branch name is chosen by whoever opens
+          # it, and a $(...) in it would run here.
+          VERSION_TAG: ${{ inputs.version_tag }}
+          HEAD_REF: ${{ github.head_ref }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
           set -euo pipefail
           # The branch under test names both the image tag and the artifact, so
           # a downloaded bundle says what it came from without opening it.
-          # github.head_ref is empty under workflow_run, and github.ref_name is
-          # the default branch there, so such callers pass version_tag instead.
-          ref="${{ inputs.version_tag || github.head_ref || github.ref_name }}"
+          # HEAD_REF is empty under workflow_run, and REF_NAME is the default
+          # branch there, so such callers pass version_tag instead.
+          ref="${VERSION_TAG:-${HEAD_REF:-${REF_NAME}}}"
           slug=$(printf '%s' "${ref}" \
                  | tr '[:upper:]' '[:lower:]' \
                  | sed -e 's|[^a-z0-9._-]|-|g' -e 's|^-*||' -e 's|-*$||' \
