@@ -569,6 +569,12 @@ jobs:
             exit 1
           fi
           set -e
+          # Port 22 answers as soon as sshd starts, which is before cloud-init
+          # has written root's authorized_keys. Wait for the key, not the port.
+          for i in $(seq 1 30); do
+            ssh ns8 true 2>/dev/null && break
+            sleep 4
+          done
           ssh ns8 'cloud-init status --wait --long'
           ssh ns8 'systemctl is-system-running --wait || true'
           ssh ns8 'cat /etc/os-release | head -2; hostname -f; df -h /; free -m; ip -4 -o addr show'
