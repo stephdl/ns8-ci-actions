@@ -11,7 +11,13 @@ a pull request opened from a fork, and with no secret at all.
 
 ## Usage
 
-Add this to a module repository:
+Two modes. Pick one.
+
+### Build from the checkout, on the pull request
+
+The module image is built from the caller's checkout and served from a registry
+that lives and dies with the job, so the pull request tests its own code. This
+is the mode that works on a fork: it needs no secret and no published image.
 
 ```yaml
 name: "Test module on QEMU"
@@ -35,8 +41,54 @@ jobs:
       distro: ${{ matrix.distro }}
 ```
 
-`concurrency` belongs to the caller: a reusable workflow cannot declare one that
-covers the calling run.
+### Test the published image, chained on the build
+
+Same shape as `NethServer/ns8-github-actions`'s `test-module.yml`: wait for
+`Publish images` to succeed, then test what it published. One build instead of
+two, and a broken build never reaches the test.
+
+```yaml
+on:
+  workflow_run:
+    workflows: ["Publish images"]
+    types: [completed]
+
+concurrency:
+  # github.ref is the default branch under workflow_run, so keying the group on
+  # it would put every branch in one group and have them cancel each other.
+  group: ${{ github.workflow }}-${{ github.event.workflow_run.head_branch || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  module:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    uses: NethServer/ns8-github-actions/.github/workflows/module-info.yml@main
+  test:
+    needs: module
+    strategy:
+      fail-fast: false
+      matrix:
+        distro: [rocky9, debian13]
+    uses: stephdl/ns8-ci-actions/.github/workflows/test-on-qemu.yml@v1
+    with:
+      distro: ${{ matrix.distro }}
+      image_url: ${{ needs.module.outputs.image }}
+      repo_ref: ${{ needs.module.outputs.sha }}
+      version_tag: ${{ needs.module.outputs.tag }}
+```
+
+Under `workflow_run` the default context points at the default branch, not at
+the branch being tested, so `repo_ref` and `version_tag` have to be passed. Two
+further consequences are inherent to `workflow_run` and apply to the upstream
+DigitalOcean workflow just the same: the definition GitHub runs is the one on
+the default branch, and the run does not appear as a check on the pull request.
+
+A fork's `Publish images` runs in the fork, so the chain runs there too — but it
+raises nothing on the upstream pull request. Use the first mode if you want a
+check on incoming pull requests.
+
+`concurrency` belongs to the caller in both modes: a reusable workflow cannot
+declare one that covers the calling run.
 
 Pin a tag, not `@main`. On `@main`, a change here silently changes the meaning of
 every caller's green tick, with no commit in their repository to point at.
@@ -132,6 +184,7 @@ asserts, then `remove-module`.
 | `vm_cpus` | `4` | guest vCPUs |
 | `disk_size` | `30G` | guest disk after resize |
 | `timeout_minutes` | `60` | |
+| `version_tag` | branch under test | names the image tag and the artifact. `workflow_run` callers must pass it |
 | `debug_shell` | `false` | tmate shell when the suite fails |
 
 `vm_mem` is the input worth setting: a DNS cache is happy with 6 GB, a module
