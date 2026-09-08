@@ -78,6 +78,11 @@ on:
         type: number
         default: 60
         description: "Job timeout"
+      version_tag:
+        required: false
+        type: string
+        default: ""
+        description: "Names the image tag and the artifact. Defaults to the branch under test, which workflow_run callers have to pass explicitly"
       debug_shell:
         required: false
         type: boolean
@@ -116,7 +121,9 @@ jobs:
           set -euo pipefail
           # The branch under test names both the image tag and the artifact, so
           # a downloaded bundle says what it came from without opening it.
-          ref="${{ github.head_ref || github.ref_name }}"
+          # github.head_ref is empty under workflow_run, and github.ref_name is
+          # the default branch there, so such callers pass version_tag instead.
+          ref="${{ inputs.version_tag || github.head_ref || github.ref_name }}"
           slug=$(printf '%s' "${ref}" \
                  | tr '[:upper:]' '[:lower:]' \
                  | sed -e 's|[^a-z0-9._-]|-|g' -e 's|^-*||' -e 's|-*$||' \
