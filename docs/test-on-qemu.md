@@ -65,14 +65,19 @@ two modules. The rest have run at their defaults and nowhere else.
 ```yaml
     with:
       distro: ${{ matrix.distro }}
-      # cloud_image_url: ""            # overrides the URL implied by distro
-      # corebranch: ns8-stable         # which install.sh to download
-      # install_args: ""               # args for install.sh: a core image, module URLs
-      # script: test-module.sh         # test entry point
-      # path: ""                       # subdirectory holding the module
+      # --- the guest operating system
+      # cloud_image_url: ""            # a qcow2 URL, for a guest distro cannot name
+      # --- the NS8 core
+      # corebranch: ns8-stable         # git ref of ns8-core: which install.sh runs
+      # install_args: ""               # what that install.sh installs: a core image,
+      #                                # module URLs, or both
+      # --- the module under test
+      # script: test-module.sh         # test entry point in the caller repository
+      # path: ""                       # subdirectory, when the module is not at the root
+      # --- the machine
       # runs_on: ubuntu-24.04          # must provide /dev/kvm
       # vm_mem: 8192                   # guest memory, MiB. 12288 is the ceiling
-      # vm_cpus: 4                     # the runner has 4
+      # vm_cpus: 4                     # guest vCPUs. The runner has 4
       # disk_size: 30G                 # guest disk after resize
       # timeout_minutes: 60            # a run takes about ten
       # debug_shell: false             # tmate session when the suite fails
