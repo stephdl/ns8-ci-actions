@@ -250,7 +250,9 @@ jobs:
           # Failing here rather than twenty minutes later at add-module: the
           # usual cause is a publish workflow that has not finished, or a
           # build-images.sh publishing under a name module-info does not derive.
-          if ! raw=$(skopeo inspect --no-tags "docker://${IMAGE_URL}" 2>&1); then
+          # No --no-tags: it only skips listing tags, and the skopeo 1.4 that
+          # ubuntu-22.04 ships does not know the flag.
+          if ! raw=$(skopeo inspect "docker://${IMAGE_URL}" 2>&1); then
             echo "::error::cannot resolve ${IMAGE_URL}"
             echo "${raw}"
             exit 1
