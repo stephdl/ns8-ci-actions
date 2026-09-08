@@ -201,6 +201,28 @@ Both optional.
 
 Pass them only if the module pulls enough Docker Hub images to risk a 429.
 
+## The cloud image cache
+
+Downloading the guest image dominated the Rocky job: 93 s, 263 s then 290 s over
+three runs, against 5 s for Debian, whose URL redirects to a CDN mirror. The
+image is now cached, keyed on the checksum the distribution publishes next to
+it.
+
+That key does the expiry by itself. A new point release changes the checksum,
+so the key changes, so the cache misses and the image is refetched. A hit is the
+upstream image whatever its age, which means "too old" stops being a state the
+cache can be in. GitHub deletes entries unused for 7 days and evicts by
+least-recently-used past 10 GB per repository, so nothing has to be pruned by
+hand. About 620 MB per distribution.
+
+The restored file is checked against that same checksum before use: a mismatch
+warns, deletes it and refetches. A fresh download that fails the check is fatal.
+
+Two details worth knowing if you read the workflow. The save is explicit rather
+than left to `actions/cache`, whose post-job step would run after the guest has
+written gigabytes into the disk. And the guest boots on a copy, so the cached
+base stays exactly what the checksum says.
+
 ## What a run produces
 
 The image is tagged with the branch under test, so `add-module` in the Robot log
