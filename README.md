@@ -197,7 +197,7 @@ Both optional.
 
 | Secret | |
 |---|---|
-| `dockerhub_user` | raises the Docker Hub pull limit above the 100 per 6h that anonymous runners share |
+| `dockerhub_user` | raises the Docker Hub pull limit above the 100 per 6h that anonymous runners share. Used by the runner and by the guest |
 | `dockerhub_token` | |
 
 Pass them only if the module pulls enough Docker Hub images to risk a 429.

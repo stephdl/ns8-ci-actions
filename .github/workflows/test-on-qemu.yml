@@ -108,7 +108,6 @@ jobs:
       TAP: ns8tap0
       VM_DIR: /mnt/ns8vm
       REGISTRY: 192.168.77.1:5000
-      SSH_KEYFILE: /home/runner/.ssh/ns8ci
       MODULE_DIR: ${{ github.workspace }}/${{ inputs.path }}
 
     steps:
@@ -117,13 +116,20 @@ jobs:
           ref: ${{ inputs.repo_ref }}
 
       - name: Derive the version tag
+        env:
+          # Through the environment, never interpolated into the script: on a
+          # pull request from a fork the branch name is chosen by whoever opens
+          # it, and a $(...) in it would run here.
+          VERSION_TAG: ${{ inputs.version_tag }}
+          HEAD_REF: ${{ github.head_ref }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
           set -euo pipefail
           # The branch under test names both the image tag and the artifact, so
           # a downloaded bundle says what it came from without opening it.
-          # github.head_ref is empty under workflow_run, and github.ref_name is
-          # the default branch there, so such callers pass version_tag instead.
-          ref="${{ inputs.version_tag || github.head_ref || github.ref_name }}"
+          # HEAD_REF is empty under workflow_run, and REF_NAME is the default
+          # branch there, so such callers pass version_tag instead.
+          ref="${VERSION_TAG:-${HEAD_REF:-${REF_NAME}}}"
           slug=$(printf '%s' "${ref}" \
                  | tr '[:upper:]' '[:lower:]' \
                  | sed -e 's|[^a-z0-9._-]|-|g' -e 's|^-*||' -e 's|-*$||' \
@@ -181,14 +187,24 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          # $HOME rather than a hardcoded /home/runner: runs_on is an input, and
+          # a self-hosted runner need not run as `runner`.
+          keyfile="${HOME}/.ssh/ns8ci"
+          # A self-hosted runner keeps its filesystem between jobs, where
+          # ssh-keygen would stop on its overwrite prompt.
+          rm -f "${keyfile}" "${keyfile}.pub"
           # RSA in PEM form: the ns8 module suites pin paramiko 2.9.2, which
           # needs rsa-sha2-* to talk to OpenSSH 8.7 and later.
-          ssh-keygen -t rsa -b 4096 -m PEM -N '' -C ns8-ci -f "${SSH_KEYFILE}"
-          cat >> ~/.ssh/config <<EOF
+          ssh-keygen -t rsa -b 4096 -m PEM -N '' -C ns8-ci -f "${keyfile}"
+          echo "SSH_KEYFILE=${keyfile}" >> "${GITHUB_ENV}"
+          # Same reason: appending unconditionally would stack duplicate Host
+          # blocks on a reused runner.
+          if ! grep -qx 'Host ns8' ~/.ssh/config 2>/dev/null; then
+            cat >> ~/.ssh/config <<EOF
           Host ns8
             HostName ${VM_IP}
             User root
-            IdentityFile ${SSH_KEYFILE}
+            IdentityFile ${keyfile}
             StrictHostKeyChecking no
             UserKnownHostsFile /dev/null
             BatchMode yes
@@ -197,6 +213,7 @@ jobs:
             ServerAliveCountMax 20
             LogLevel ERROR
           EOF
+          fi
           chmod 600 ~/.ssh/config
 
       - name: Build the host bridge and NAT
@@ -228,6 +245,21 @@ jobs:
           # bridge.
           mkdir -p ~/.config/containers
           printf '[containers]\nnetns = "host"\n' > ~/.config/containers/containers.conf
+
+      - name: Authenticate the runner to Docker Hub
+        env:
+          DH_USER: ${{ secrets.dockerhub_user }}
+          DH_TOKEN: ${{ secrets.dockerhub_token }}
+        run: |
+          set -euo pipefail
+          # The guest is not the only one pulling: the runner takes registry:2,
+          # alpine:3 and whatever build-images.sh builds on. A 429 here kills
+          # the job just as dead.
+          if [ -n "${DH_USER:-}" ] && [ -n "${DH_TOKEN:-}" ]; then
+            printf '%s' "${DH_TOKEN}" | podman login -u "${DH_USER}" --password-stdin docker.io
+          else
+            echo "no dockerhub_user/dockerhub_token secret, the runner pulls anonymously"
+          fi
 
       - name: Start the throwaway registry
         if: ${{ inputs.image_url == '' }}
@@ -537,6 +569,12 @@ jobs:
             exit 1
           fi
           set -e
+          # Port 22 answers as soon as sshd starts, which is before cloud-init
+          # has written root's authorized_keys. Wait for the key, not the port.
+          for i in $(seq 1 30); do
+            ssh ns8 true 2>/dev/null && break
+            sleep 4
+          done
           ssh ns8 'cloud-init status --wait --long'
           ssh ns8 'systemctl is-system-running --wait || true'
           ssh ns8 'cat /etc/os-release | head -2; hostname -f; df -h /; free -m; ip -4 -o addr show'
