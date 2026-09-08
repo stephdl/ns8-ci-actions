@@ -25,7 +25,7 @@ Three things, all of them already conventions in `ns8-*` repositories:
 Nothing in the workflows knows the module's name. They read it from the `images`
 output, which is what makes the same file work for every module.
 
-Neither mode needs a secret.
+No secret is needed.
 
 ## Versioning
 

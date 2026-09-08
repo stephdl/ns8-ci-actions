@@ -29,10 +29,9 @@ on:
         default: ns8-stable
         description: "Branch or tag of ns8-core to install from"
       image_url:
-        required: false
+        required: true
         type: string
-        default: ""
-        description: "Module image to test. When empty, build-images.sh builds one from the checkout"
+        description: "Module image to test, published and reachable from the guest"
       script:
         required: false
         type: string
@@ -97,7 +96,6 @@ jobs:
       BR: ns8br0
       TAP: ns8tap0
       VM_DIR: /mnt/ns8vm
-      REGISTRY: 192.168.77.1:5000
       MODULE_DIR: ${{ github.workspace }}/${{ inputs.path }}
 
     steps:
@@ -165,12 +163,12 @@ jobs:
           sudo mkdir -p "${VM_DIR}"
           sudo chown "$USER:$USER" "${VM_DIR}"
 
-      - name: Install QEMU, cloud-image and build tooling
+      - name: Install QEMU and cloud-image tooling
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq qemu-system-x86 qemu-utils cloud-image-utils buildah skopeo
+          sudo apt-get install -y -qq qemu-system-x86 qemu-utils cloud-image-utils skopeo
           # Ubuntu 24.04 confines unprivileged user namespaces by default, which
-          # rootless buildah and podman both need.
+          # rootless podman needs.
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
 
       - name: Generate the CI SSH key
@@ -232,63 +230,18 @@ jobs:
           # test-module.sh runs podman with no --network, so the robot container
           # would otherwise reach the guest through pasta or slirp4netns
           # depending on the podman version the runner image ships that month.
-          # The throwaway registry relies on the same setting to listen on the
-          # bridge.
           mkdir -p ~/.config/containers
           printf '[containers]\nnetns = "host"\n' > ~/.config/containers/containers.conf
 
-      - name: Start the throwaway registry
-        if: ${{ inputs.image_url == '' }}
-        run: |
-          set -euo pipefail
-          podman run -d --name ci-registry docker.io/library/registry:2
-          for i in $(seq 1 30); do
-            curl -fsS "http://${REGISTRY}/v2/" >/dev/null 2>&1 && break
-            sleep 1
-          done
-          curl -fsS "http://${REGISTRY}/v2/" >/dev/null
-
-      - name: Build the module images
-        id: build
-        if: ${{ inputs.image_url == '' }}
-        working-directory: ${{ github.workspace }}/${{ inputs.path }}
-        run: |
-          set -euo pipefail
-          # Every ns8 module ships this script, and under CI it reports what it
-          # built on the `images` output. That is the whole contract: nothing
-          # here knows the module's name.
-          REPOBASE="${REGISTRY}" bash ./build-images.sh
-
-      - name: Push the module images to the throwaway registry
-        if: ${{ inputs.image_url == '' }}
-        run: |
-          set -euo pipefail
-          built="${{ steps.build.outputs.images }}"
-          if [ -z "${built}" ]; then
-            echo "::error::build-images.sh set no 'images' output, cannot tell what to test"
-            exit 1
-          fi
-          first=""
-          for img in ${built}; do
-            buildah push --tls-verify=false "${img}" "docker://${img}:${REF_SLUG}"
-            [ -n "${first}" ] || first="${img}:${REF_SLUG}"
-          done
-          echo "IMAGE_URL=${first}" >> "${GITHUB_ENV}"
-          curl -fsS "http://${REGISTRY}/v2/_catalog"; echo
-
-      - name: Use the module image given by the caller
-        if: ${{ inputs.image_url != '' }}
-        run: |
-          echo "IMAGE_URL=${{ inputs.image_url }}" >> "${GITHUB_ENV}"
-
       - name: Describe the image under test
+        env:
+          IMAGE_URL: ${{ inputs.image_url }}
         run: |
           set -uo pipefail
+          echo "IMAGE_URL=${IMAGE_URL}" >> "${GITHUB_ENV}"
           # A tag can be repushed, a digest cannot, so the summary carries both:
           # it has to say exactly which artifact the suite ran against.
-          tls=""
-          case "${IMAGE_URL}" in "${REGISTRY}/"*) tls="--tls-verify=false" ;; esac
-          digest=$(skopeo inspect ${tls} --no-tags "docker://${IMAGE_URL}" 2>/dev/null | jq -r '.Digest // empty')
+          digest=$(skopeo inspect --no-tags "docker://${IMAGE_URL}" 2>/dev/null | jq -r '.Digest // empty')
           {
             echo "### Module image"
             echo
@@ -368,12 +321,6 @@ jobs:
             # Module images are pulled rootless by the module user, which does
             # not exist yet at provisioning time, so neither its registries.conf
             # nor its auth.json can be seeded. Both have to be host-wide.
-            - path: /etc/containers/registries.conf.d/010-ns8ci.conf
-              permissions: '0644'
-              content: |
-                [[registry]]
-                location = "${REGISTRY}"
-                insecure = true
             - path: /usr/local/sbin/ns8ci-prepare
               permissions: '0755'
               content: |
@@ -552,9 +499,6 @@ jobs:
           # Proves routing, NAT and DNS in one second, instead of discovering a
           # FORWARD DROP twenty minutes later as a registry timeout.
           ssh ns8 'getent hosts registry-1.docker.io'
-          if [ -z "${{ inputs.image_url }}" ]; then
-            ssh ns8 "curl -fsS http://${REGISTRY}/v2/_catalog; echo"
-          fi
 
       - name: Preflight - reach the VM over SSH from inside a container
         run: |
