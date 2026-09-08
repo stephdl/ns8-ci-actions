@@ -3,61 +3,17 @@
 Boots a cloud image under KVM on the runner, installs the NS8 core, creates a
 single-node cluster and runs the module's own test suite against it.
 
-- [Choosing a mode](#choosing-a-mode)
 - [Calling it](#calling-it)
 - [How it works](#how-it-works)
 - [Inputs](#inputs)
-- [Secrets](#secrets)
 - [The cloud image cache](#the-cloud-image-cache)
 - [What a run produces](#what-a-run-produces)
 - [When it fails](#when-it-fails)
 
-## Choosing a mode
-
-Two ways to call it, and the difference is what gets tested and when.
-
-**Build from the checkout** builds the image from the caller's own checkout, so
-a pull request tests exactly its own code, and the result appears as a check on
-that pull request. It needs no secret and no published image, which is why it is
-the mode that works from a fork. It costs a second build of the same commit.
-
-**Chained on the build** waits for a publish workflow to succeed and tests the
-image it published. One build instead of two, and a broken build never reaches
-the test. In exchange, `workflow_run` raises no check on a pull request, and a
-fork's chain runs and reports inside the fork rather than upstream.
-
-Pick the first if incoming pull requests are what you want covered. Pick the
-second if you want to test the artifact you actually ship, and if the extra
-build bothers you. [ns8-pihole](https://github.com/stephdl/ns8-pihole/blob/main/.github/workflows/test-module-qemu.yml)
-uses the second.
-
 ## Calling it
 
-### Build from the checkout, on the pull request
-
-```yaml
-name: "Test module on QEMU"
-
-on:
-  pull_request:
-    branches: [main]
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
-jobs:
-  test:
-    strategy:
-      fail-fast: false
-      matrix:
-        distro: [rocky9, debian13]
-    uses: stephdl/ns8-ci-actions/.github/workflows/test-on-qemu.yml@v1
-    with:
-      distro: ${{ matrix.distro }}
-```
-
-### Test the published image, chained on the build
+Wait for the build to succeed, then test the image it published. One build, and
+a broken image never reaches the test.
 
 ```yaml
 on:
@@ -88,7 +44,7 @@ jobs:
       version_tag: ${{ needs.module.outputs.tag }}
 ```
 
-`concurrency` belongs to the caller in both modes: a reusable workflow cannot
+`concurrency` belongs to the caller: a reusable workflow cannot
 declare one that covers the calling run.
 
 Under `workflow_run` the default context points at the default branch, not at
@@ -98,21 +54,44 @@ workflow just the same: GitHub runs the definition from the default branch, and
 the run raises no check on a pull request. A fork's publish workflow runs in the
 fork, so the chain runs and reports there.
 
+### Everything else you can set
+
+Every input has a default. These are the ones the examples leave out, with the
+value they take if you say nothing — uncomment what you need.
+
+Only `vm_mem` has been exercised at a value other than its default, at 12288 on
+two modules. The rest have run at their defaults and nowhere else.
+
+```yaml
+    with:
+      distro: ${{ matrix.distro }}
+      # cloud_image_url: ""            # overrides the URL implied by distro
+      # corebranch: ns8-stable         # which install.sh to download
+      # install_args: ""               # args for install.sh: a core image, module URLs
+      # script: test-module.sh         # test entry point
+      # path: ""                       # subdirectory holding the module
+      # runs_on: ubuntu-24.04          # must provide /dev/kvm
+      # vm_mem: 8192                   # guest memory, MiB. 12288 is the ceiling
+      # vm_cpus: 4                     # the runner has 4
+      # disk_size: 30G                 # guest disk after resize
+      # timeout_minutes: 60            # a run takes about ten
+      # debug_shell: false             # tmate session when the suite fails
+```
+
 ## How it works
 
 Three environments nested inside one another. Everything else follows from that.
 
 ```
+  Publish images ──build──> ghcr.io/<owner>/<module>:<tag>
+        │ on success
+        ▼
 ┌─ GitHub runner (ubuntu-24.04, throwaway Azure VM) ──────────────────┐
 │                                                                     │
-│  buildah ──build-images.sh──┐                                       │
-│                             ▼                                       │
-│                    ci-registry (registry:2)  192.168.77.1:5000      │
-│                             ▲                                       │
-│  ns8br0 192.168.77.1/24 ────┼──── MASQUERADE ──> internet           │
-│    │                        │                                       │
-│    │ ns8tap0                │ pull                                  │
-│    ▼                        │                                       │
+│  ns8br0 192.168.77.1/24 ──── MASQUERADE ──> ghcr.io, docker.io      │
+│    │                                                                │
+│    │ ns8tap0                                                        │
+│    ▼                                                                │
 │  ┌─ QEMU/KVM guest   192.168.77.10 ──────────────────────┐          │
 │  │                                                       │          │
 │  │  ns8-core ── traefik :80 :443 ──> module pod          │          │
@@ -139,14 +118,9 @@ session to the guest and runs commands there.
 
 ### The three phases
 
-**1. Build the image, on the runner.** `build-images.sh` builds from the
-caller's checkout with `REPOBASE` pointed at the local registry, and reports
-what it built on its `images` output. That output is the entire contract: the
-workflow never needs to know the module's name.
-
-Why not ghcr? On a pull request from a fork `GITHUB_TOKEN` has no
-`packages: write`. And the point is to test the code of the pull request, not an
-image published before it.
+**1. Resolve the image.** `module-info` gives the reference the publish workflow
+pushed, and `skopeo` resolves its digest before anything boots, so the summary
+names the exact artifact under test.
 
 **2. Bring the node up.** The cloud-init seed gives the guest its static
 address, the runner's SSH key, and a `registries.conf.d` entry marking the
@@ -156,7 +130,7 @@ point the guest is a working single-node NS8 cluster with no module on it.
 
 **3. Run the suite.** `test-module.sh` starts the test container and hands it
 the node address and the image URL. Robot connects over SSH and drives the node:
-`add-module` from the throwaway registry, then whatever the module's own suite
+`add-module` on the published image, then whatever the module's own suite
 asserts, then `remove-module`.
 
 ## Inputs
@@ -165,8 +139,8 @@ asserts, then `remove-module`.
 |---|---|---|
 | `distro` | `rocky9` | `rocky9`, `debian12` or `debian13`. `bookworm` and `trixie` are accepted as aliases |
 | `cloud_image_url` | | overrides the URL implied by `distro` |
-| `corebranch` | `ns8-stable` | branch or tag of `ns8-core` |
-| `coremodules` | | extra module URLs passed to `install.sh` |
+| `corebranch` | `ns8-stable` | git ref of `ns8-core` deciding which `install.sh` is downloaded |
+| `install_args` | | passed to `install.sh`. A core image replaces the `ns8-stable` it hardcodes; anything else is treated as a module to install |
 | `image_url` | | test this image instead of building one |
 | `script` | `test-module.sh` | test entry point |
 | `path` | | subdirectory holding the module |
@@ -181,17 +155,6 @@ asserts, then `remove-module`.
 
 `vm_mem` is the input worth setting: the runner has 15 GiB and uses about 1.5 of
 them, so 8 leaves room, but a module starting several JVMs wants more.
-
-## Secrets
-
-Both optional.
-
-| Secret | |
-|---|---|
-| `dockerhub_user` | raises the Docker Hub pull limit above the 100 per 6h that anonymous runners share. Used by the runner and by the guest |
-| `dockerhub_token` | |
-
-Pass them only if the module pulls enough Docker Hub images to risk a 429.
 
 ## The cloud image cache
 
