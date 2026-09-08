@@ -56,24 +56,64 @@ output, which is what makes the same file work for every module.
 
 ## How it works
 
+Three environments nested inside one another. Everything else follows from that.
+
 ```
-runner (ubuntu-24.04, throwaway VM)
-├── buildah ──build-images.sh──> 192.168.77.1:5000/<module>:ci  (registry:2)
-├── bridge ns8br0 192.168.77.1/24 + tap + MASQUERADE
-├── qemu -accel kvm
-│   └── guest @ 192.168.77.10 → install.sh → create-cluster
-│       └── add-module 192.168.77.1:5000/<module>:ci
-└── podman (host netns) → test-module.sh --ssh--> 192.168.77.10:22
+┌─ GitHub runner (ubuntu-24.04, throwaway Azure VM) ─────────────────┐
+│                                                                     │
+│  buildah ──build-images.sh──┐                                       │
+│                             ▼                                       │
+│                    ci-registry (registry:2)  192.168.77.1:5000      │
+│                             ▲                                       │
+│  ns8br0 192.168.77.1/24 ────┼──── MASQUERADE ──> internet           │
+│    │                        │                                       │
+│    │ ns8tap0                │ pull                                  │
+│    ▼                        │                                       │
+│  ┌─ QEMU/KVM guest   192.168.77.10 ─────────────────────────┐      │
+│  │                                                           │      │
+│  │  ns8-core ── traefik :80 :443 ──> module pod              │      │
+│  │                                                           │      │
+│  └───────────────────────────────────────────────────────────┘      │
+│    ▲                                                                 │
+│    │ ssh root@192.168.77.10                                          │
+│  ┌─┴─ test container (netns=host) ─┐                                │
+│  │  test-module.sh → robot          │                                │
+│  └──────────────────────────────────┘                                │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
-The module image is built from the caller's checkout and served from a registry
-that lives and dies with the job, so a pull request tests its own code rather
-than an image published earlier. Pushing to ghcr instead would not work from a
-fork: `GITHUB_TOKEN` has no `packages: write` there.
+**The runner** is a fresh VM, destroyed when the job ends. The bridge, the
+registry and the built image die with it — which is why the addresses can be
+hardcoded.
 
-The addresses are hardcoded on purpose. Every job gets its own runner VM, so the
-bridge, the subnet and the registry port are private to it. On a *self-hosted*
-runner two concurrent jobs would collide, and nothing here tears the bridge down.
+**The guest** is the real NS8 node. It runs under KVM inside the runner, hence
+the `/dev/kvm` check: without hardware acceleration QEMU emulates, and the job
+times out instead of failing.
+
+**The test container** runs the suite. It tests nothing itself; it opens an SSH
+session to the guest and runs commands there.
+
+### The three phases
+
+**1. Build the image, on the runner.** `build-images.sh` builds from the
+caller's checkout with `REPOBASE` pointed at the local registry, and reports
+what it built on its `images` output. That output is the entire contract: the
+workflow never needs to know the module's name.
+
+Why not ghcr? On a pull request from a fork `GITHUB_TOKEN` has no
+`packages: write`. And the point is to test the code of the pull request, not an
+image published before it.
+
+**2. Bring the node up.** The cloud-init seed gives the guest its static
+address, the runner's SSH key, and a `registries.conf.d` entry marking the
+registry `insecure = true` — podman refuses a plain-HTTP registry otherwise.
+Then, over SSH: `install.sh` from `ns8-core`, then `create-cluster`. At this
+point the guest is a working single-node NS8 cluster with no module on it.
+
+**3. Run the suite.** `test-module.sh` starts the test container and hands it
+the node address and the image URL. Robot connects over SSH and drives the node:
+`add-module` from the throwaway registry, then whatever the module's own suite
+asserts, then `remove-module`.
 
 ## Inputs
 
