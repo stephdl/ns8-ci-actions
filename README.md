@@ -90,8 +90,9 @@ check on incoming pull requests.
 `concurrency` belongs to the caller in both modes: a reusable workflow cannot
 declare one that covers the calling run.
 
-Pin a tag, not `@main`. On `@main`, a change here silently changes the meaning of
-every caller's green tick, with no commit in their repository to point at.
+Pin `@v1`, not `@main`. `v1` is a single moving tag, so it still changes under
+you, but only when a change has been validated against a real module — `@main`
+changes on every commit, including one written mid-debugging.
 
 ## What the workflow expects from the module
 
