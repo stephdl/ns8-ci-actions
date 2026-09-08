@@ -107,7 +107,7 @@ jobs:
       MODULE_DIR: ${{ github.workspace }}/${{ inputs.path }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.repo_ref }}
 
@@ -477,7 +477,7 @@ jobs:
 
       - name: Upload test outputs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-outputs-${{ inputs.distro }}
           path: ${{ github.workspace }}/${{ inputs.path }}/tests/outputs
