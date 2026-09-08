@@ -111,6 +111,18 @@ jobs:
         with:
           ref: ${{ inputs.repo_ref }}
 
+      - name: Derive the version tag
+        run: |
+          set -euo pipefail
+          # The branch under test names both the image tag and the artifact, so
+          # a downloaded bundle says what it came from without opening it.
+          ref="${{ github.head_ref || github.ref_name }}"
+          slug=$(printf '%s' "${ref}" \
+                 | tr '[:upper:]' '[:lower:]' \
+                 | sed -e 's|[^a-z0-9._-]|-|g' -e 's|^-*||' -e 's|-*$||' \
+                 | cut -c1-64)
+          echo "REF_SLUG=${slug:-ci}" >> "${GITHUB_ENV}"
+
       - name: Resolve the cloud image
         run: |
           set -euo pipefail
@@ -234,18 +246,20 @@ jobs:
           fi
           first=""
           for img in ${built}; do
-            buildah push --tls-verify=false "${img}" "docker://${img}:ci"
-            [ -n "${first}" ] || first="${img}:ci"
+            buildah push --tls-verify=false "${img}" "docker://${img}:${REF_SLUG}"
+            [ -n "${first}" ] || first="${img}:${REF_SLUG}"
           done
           echo "IMAGE_URL=${first}" >> "${GITHUB_ENV}"
           curl -fsS "http://${REGISTRY}/v2/_catalog"; echo
-          echo "Testing ${first}"
+          echo "### Module image" >> "${GITHUB_STEP_SUMMARY}"
+          echo "\`${first}\` on ${{ inputs.distro }}" >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Use the module image given by the caller
         if: ${{ inputs.image_url != '' }}
         run: |
           echo "IMAGE_URL=${{ inputs.image_url }}" >> "${GITHUB_ENV}"
-          echo "Testing ${{ inputs.image_url }}"
+          echo "### Module image" >> "${GITHUB_STEP_SUMMARY}"
+          echo "\`${{ inputs.image_url }}\` on ${{ inputs.distro }}" >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Build the cloud-init seed
         run: |
@@ -463,6 +477,9 @@ jobs:
           mkdir -p "${MODULE_DIR}/tests/outputs/diag"
           cd "${MODULE_DIR}/tests/outputs/diag"
           cp "${VM_DIR}/console.log" qemu-console.log
+          { echo "image tested: ${IMAGE_URL}";
+            ssh ns8 'podman images --digests --format "{{.Repository}}:{{.Tag}} {{.Digest}}"';
+            ssh ns8 'api-cli run list-installed-modules'; }  > module-version.txt
           ssh ns8 'cat /etc/os-release'                            > vm-os-release.txt
           ssh ns8 'journalctl --no-pager -b'                       > vm-journal.log
           ssh ns8 'podman images --format "{{.Repository}}:{{.Tag}} {{.Size}}"' \
@@ -479,7 +496,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: test-outputs-${{ inputs.distro }}
+          name: test-outputs-${{ inputs.distro }}-${{ env.REF_SLUG }}
           path: ${{ github.workspace }}/${{ inputs.path }}/tests/outputs
           if-no-files-found: warn
           retention-days: 14

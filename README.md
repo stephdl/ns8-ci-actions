@@ -148,10 +148,23 @@ Both optional.
 
 Pass them only if the module pulls enough Docker Hub images to risk a 429.
 
+## What a run produces
+
+The image is tagged with the branch under test, so `add-module` in the Robot log
+reads `192.168.77.1:5000/pihole:feat-8678` rather than an anonymous tag, and the
+run summary names it. The artifact carries the same slug:
+
+```
+test-outputs-debian13-feat-8678
+test-outputs-rocky9-feat-8678
+```
+
+`diag/module-version.txt` inside it records the image URL, the digests podman
+resolved on the node, and `list-installed-modules`.
+
 ## When it fails
 
-Every run uploads `test-outputs-<distro>`: the Robot `log.html` and
-`report.html`, plus a `diag/` directory with the QEMU serial console, the guest
-journal, its `/etc/os-release`, listening sockets, and `podman ps` for every
-module user. That is usually enough to find the cause without opening a shell.
+The artifact holds the Robot `log.html` and `report.html`, plus a `diag/`
+directory with the QEMU serial console, the guest journal, its
+`/etc/os-release`, listening sockets, and `podman ps` for every module user. That is usually enough to find the cause without opening a shell.
 `debug_shell: true` gives you a tmate session when it is not.
