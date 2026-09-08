@@ -246,7 +246,16 @@ jobs:
           echo "IMAGE_URL=${IMAGE_URL}" >> "${GITHUB_ENV}"
           # A tag can be repushed, a digest cannot, so the summary carries both:
           # it has to say exactly which artifact the suite ran against.
-          digest=$(skopeo inspect --no-tags "docker://${IMAGE_URL}" 2>/dev/null | jq -r '.Digest // empty')
+          #
+          # Failing here rather than twenty minutes later at add-module: the
+          # usual cause is a publish workflow that has not finished, or a
+          # build-images.sh publishing under a name module-info does not derive.
+          if ! raw=$(skopeo inspect --no-tags "docker://${IMAGE_URL}" 2>&1); then
+            echo "::error::cannot resolve ${IMAGE_URL}"
+            echo "${raw}"
+            exit 1
+          fi
+          digest=$(printf '%s' "${raw}" | jq -r '.Digest // empty')
           {
             echo "### Module image"
             echo
