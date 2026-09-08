@@ -28,11 +28,6 @@ on:
         type: string
         default: ns8-stable
         description: "Branch or tag of ns8-core to install from"
-      coremodules:
-        required: false
-        type: string
-        default: ""
-        description: "Space-separated module URLs to pass to install.sh"
       image_url:
         required: false
         type: string
@@ -88,11 +83,6 @@ on:
         type: boolean
         default: false
         description: "Open a tmate shell when the suite fails"
-    secrets:
-      dockerhub_user:
-        required: false
-      dockerhub_token:
-        required: false
 
 jobs:
   test-module:
@@ -247,21 +237,6 @@ jobs:
           mkdir -p ~/.config/containers
           printf '[containers]\nnetns = "host"\n' > ~/.config/containers/containers.conf
 
-      - name: Authenticate the runner to Docker Hub
-        env:
-          DH_USER: ${{ secrets.dockerhub_user }}
-          DH_TOKEN: ${{ secrets.dockerhub_token }}
-        run: |
-          set -euo pipefail
-          # The guest is not the only one pulling: the runner takes registry:2,
-          # alpine:3 and whatever build-images.sh builds on. A 429 here kills
-          # the job just as dead.
-          if [ -n "${DH_USER:-}" ] && [ -n "${DH_TOKEN:-}" ]; then
-            printf '%s' "${DH_TOKEN}" | podman login -u "${DH_USER}" --password-stdin docker.io
-          else
-            echo "no dockerhub_user/dockerhub_token secret, the runner pulls anonymously"
-          fi
-
       - name: Start the throwaway registry
         if: ${{ inputs.image_url == '' }}
         run: |
@@ -399,11 +374,6 @@ jobs:
                 [[registry]]
                 location = "${REGISTRY}"
                 insecure = true
-            - path: /etc/containers/containers.conf
-              permissions: '0644'
-              content: |
-                [engine]
-                env = ["REGISTRY_AUTH_FILE=/etc/containers/ci-auth.json"]
             - path: /usr/local/sbin/ns8ci-prepare
               permissions: '0755'
               content: |
@@ -594,29 +564,12 @@ jobs:
              ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
                  -i /keys/ns8ci root@${VM_IP} 'echo CONTAINER_TO_VM_SSH_OK; hostname -f'"
 
-      - name: Configure registry credentials inside the VM
-        env:
-          DH_USER: ${{ secrets.dockerhub_user }}
-          DH_TOKEN: ${{ secrets.dockerhub_token }}
-        run: |
-          set -euo pipefail
-          # Docker Hub allows 100 anonymous pulls per 6h, shared across the
-          # runner IP pool. Modules pulling many images will hit a 429 without
-          # this; authenticating raises the limit.
-          if [ -n "${DH_USER:-}" ] && [ -n "${DH_TOKEN:-}" ]; then
-            printf '%s' "${DH_TOKEN}" | ssh ns8 \
-              "podman login --authfile /etc/containers/ci-auth.json -u '${DH_USER}' --password-stdin docker.io"
-            ssh ns8 'chmod 0644 /etc/containers/ci-auth.json'
-          else
-            echo "no dockerhub_user/dockerhub_token secret, pulling anonymously"
-          fi
-
       - name: Install the NS8 core
         run: |
           set -euo pipefail
           ssh ns8 "set -e; cd /root; \
             curl -fsSL --retry 3 -O https://raw.githubusercontent.com/NethServer/ns8-core/${{ inputs.corebranch }}/core/install.sh; \
-            bash install.sh ${{ inputs.coremodules }}"
+            bash install.sh"
 
       - name: Initialise the cluster
         run: |

@@ -7,7 +7,6 @@ single-node cluster and runs the module's own test suite against it.
 - [Calling it](#calling-it)
 - [How it works](#how-it-works)
 - [Inputs](#inputs)
-- [Secrets](#secrets)
 - [The cloud image cache](#the-cloud-image-cache)
 - [What a run produces](#what-a-run-produces)
 - [When it fails](#when-it-fails)
@@ -98,6 +97,26 @@ workflow just the same: GitHub runs the definition from the default branch, and
 the run raises no check on a pull request. A fork's publish workflow runs in the
 fork, so the chain runs and reports there.
 
+### Everything else you can set
+
+Every input has a default. These are the ones the examples leave out, with the
+value they take if you say nothing — uncomment what you need.
+
+```yaml
+    with:
+      distro: ${{ matrix.distro }}
+      # cloud_image_url: ""            # overrides the URL implied by distro
+      # corebranch: ns8-stable         # branch or tag of ns8-core
+      # script: test-module.sh         # test entry point
+      # path: ""                       # subdirectory holding the module
+      # runs_on: ubuntu-24.04          # must provide /dev/kvm
+      # vm_mem: 8192                   # guest memory, MiB. 12288 is the ceiling
+      # vm_cpus: 4                     # the runner has 4
+      # disk_size: 30G                 # guest disk after resize
+      # timeout_minutes: 60            # a run takes about ten
+      # debug_shell: false             # tmate session when the suite fails
+```
+
 ## How it works
 
 Three environments nested inside one another. Everything else follows from that.
@@ -166,7 +185,6 @@ asserts, then `remove-module`.
 | `distro` | `rocky9` | `rocky9`, `debian12` or `debian13`. `bookworm` and `trixie` are accepted as aliases |
 | `cloud_image_url` | | overrides the URL implied by `distro` |
 | `corebranch` | `ns8-stable` | branch or tag of `ns8-core` |
-| `coremodules` | | extra module URLs passed to `install.sh` |
 | `image_url` | | test this image instead of building one |
 | `script` | `test-module.sh` | test entry point |
 | `path` | | subdirectory holding the module |
@@ -181,17 +199,6 @@ asserts, then `remove-module`.
 
 `vm_mem` is the input worth setting: the runner has 15 GiB and uses about 1.5 of
 them, so 8 leaves room, but a module starting several JVMs wants more.
-
-## Secrets
-
-Both optional.
-
-| Secret | |
-|---|---|
-| `dockerhub_user` | raises the Docker Hub pull limit above the 100 per 6h that anonymous runners share. Used by the runner and by the guest |
-| `dockerhub_token` | |
-
-Pass them only if the module pulls enough Docker Hub images to risk a 429.
 
 ## The cloud image cache
 
