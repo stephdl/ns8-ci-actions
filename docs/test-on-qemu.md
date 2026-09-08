@@ -59,8 +59,10 @@ fork, so the chain runs and reports there.
 Every input has a default. These are the ones the examples leave out, with the
 value they take if you say nothing — uncomment what you need.
 
-Only `vm_mem` has been exercised at a value other than its default, at 12288 on
-two modules. The rest have run at their defaults and nowhere else.
+Every key sits at the same indentation as `distro`, so uncommenting means
+deleting the `# ` — the hash **and** the space after it. Dropping only the hash
+shifts the key one column and YAML rejects the file. The indented continuation
+lines carry prose, not keys: delete them rather than uncomment them.
 
 ```yaml
     with:
