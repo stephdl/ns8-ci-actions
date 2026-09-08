@@ -160,6 +160,15 @@ jobs:
           test -e /dev/kvm || { echo "::error::/dev/kvm is missing on runner '${{ inputs.runs_on }}'"; exit 1; }
           ls -l /dev/kvm
 
+      - name: Create the VM directory
+        run: |
+          set -euo pipefail
+          # /mnt on the current ubuntu-24.04 image is the root filesystem, which
+          # reports 87G free. The path is kept for runner images that do give
+          # /mnt its own larger disk.
+          sudo mkdir -p "${VM_DIR}"
+          sudo chown "$USER:$USER" "${VM_DIR}"
+
       - name: Install QEMU, cloud-image and build tooling
         run: |
           sudo apt-get update -qq
@@ -390,11 +399,6 @@ jobs:
       - name: Resolve the published image checksum
         run: |
           set -uo pipefail
-          # /mnt on the current ubuntu-24.04 image is the root filesystem, which
-          # reports 87G free. The path is kept for runner images that do give
-          # /mnt its own larger disk.
-          sudo mkdir -p "${VM_DIR}"
-          sudo chown "$USER:$USER" "${VM_DIR}"
           base="${CLOUD_IMAGE_URL%/*}"
           file="${CLOUD_IMAGE_URL##*/}"
           case "${{ inputs.distro }}" in
