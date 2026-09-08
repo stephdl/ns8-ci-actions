@@ -180,7 +180,7 @@ asserts, then `remove-module`.
 | `path` | | subdirectory holding the module |
 | `repo_ref` | `github.sha` | caller ref to check out |
 | `runs_on` | `ubuntu-24.04` | must provide `/dev/kvm` |
-| `vm_mem` | `8192` | guest memory, MiB |
+| `vm_mem` | `8192` | guest memory, MiB. The runner has 15360 and needs some for itself, so 12288 is the practical ceiling |
 | `vm_cpus` | `4` | guest vCPUs |
 | `disk_size` | `30G` | guest disk after resize |
 | `timeout_minutes` | `60` | |
