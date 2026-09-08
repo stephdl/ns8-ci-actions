@@ -65,14 +65,23 @@ two modules. The rest have run at their defaults and nowhere else.
 ```yaml
     with:
       distro: ${{ matrix.distro }}
-      # cloud_image_url: ""            # overrides the URL implied by distro
-      # corebranch: ns8-stable         # which install.sh to download
-      # install_args: ""               # args for install.sh: a core image, module URLs
-      # script: test-module.sh         # test entry point
-      # path: ""                       # subdirectory holding the module
+      # --- the guest operating system
+      # cloud_image_url: ""            # a qcow2 URL, for a guest distro cannot name.
+      #                                # distro: rocky9 tracks .latest, so pinning a
+      #                                # point release goes here:
+      #                                #   https://dl.rockylinux.org/pub/rocky/9/images/
+      #                                #   x86_64/Rocky-9-GenericCloud-Base-9.8-20260525.0.x86_64.qcow2
+      # --- the NS8 core
+      # corebranch: ns8-stable         # git ref of ns8-core: which install.sh runs
+      # install_args: ""               # what that install.sh installs: a core image,
+      #                                # module URLs, or both
+      # --- the module under test
+      # script: test-module.sh         # test entry point in the caller repository
+      # path: ""                       # subdirectory, when the module is not at the root
+      # --- the machine
       # runs_on: ubuntu-24.04          # must provide /dev/kvm
       # vm_mem: 8192                   # guest memory, MiB. 12288 is the ceiling
-      # vm_cpus: 4                     # the runner has 4
+      # vm_cpus: 4                     # guest vCPUs. The runner has 4
       # disk_size: 30G                 # guest disk after resize
       # timeout_minutes: 60            # a run takes about ten
       # debug_shell: false             # tmate session when the suite fails
@@ -135,26 +144,51 @@ asserts, then `remove-module`.
 
 ## Inputs
 
+Four things get chosen here, and they are easy to confuse because three of them
+name an image. The guest operating system, the NS8 core installed on it, the
+module under test, and the size of the machine.
+
+### The guest operating system
+
+The virtual machine the node runs on. Nothing to do with containers.
+
 | Input | Default | |
 |---|---|---|
 | `distro` | `rocky9` | `rocky9`, `debian12` or `debian13`. `bookworm` and `trixie` are accepted as aliases |
-| `cloud_image_url` | | overrides the URL implied by `distro` |
-| `corebranch` | `ns8-stable` | git ref of `ns8-core` deciding which `install.sh` is downloaded |
-| `install_args` | | passed to `install.sh`. A core image replaces the `ns8-stable` it hardcodes; anything else is treated as a module to install |
-| `image_url` | | test this image instead of building one |
-| `script` | `test-module.sh` | test entry point |
-| `path` | | subdirectory holding the module |
-| `repo_ref` | `github.sha` | caller ref to check out |
-| `runs_on` | `ubuntu-24.04` | must provide `/dev/kvm` |
-| `vm_mem` | `8192` | guest memory, MiB. The runner has 15360 and needs some for itself, so 12288 is the practical ceiling |
-| `vm_cpus` | `4` | guest vCPUs |
-| `disk_size` | `30G` | guest disk after resize |
-| `timeout_minutes` | `60` | |
-| `version_tag` | branch under test | names the image tag and the artifact. `workflow_run` callers must pass it |
-| `debug_shell` | `false` | tmate shell when the suite fails |
+| `cloud_image_url` | | a qcow2 URL, overriding the one `distro` implies. `distro` tracks `.latest`, so pinning a point release goes here: `.../Rocky-9-GenericCloud-Base-9.8-20260525.0.x86_64.qcow2`. Also how to boot an image this workflow does not name at all |
 
-`vm_mem` is the input worth setting: the runner has 15 GiB and uses about 1.5 of
-them, so 8 leaves room, but a module starting several JVMs wants more.
+### The NS8 core
+
+Two separate choices, and setting only the first is the usual mistake.
+
+| Input | Default | |
+|---|---|---|
+| `corebranch` | `ns8-stable` | git ref of `ns8-core`, deciding **which `install.sh` is downloaded** |
+| `install_args` | | arguments for that `install.sh`. A **core container image** here replaces the `ns8-stable` every `install.sh` hardcodes; anything else is treated as a module to install alongside |
+
+Testing a development core takes both: `corebranch: 3.22.0-dev.6` alone downloads
+the dev script, which then installs stable anyway.
+
+### The module under test
+
+| Input | Default | |
+|---|---|---|
+| `image_url` | **required** | the module's container image, already published and reachable from the guest. Usually `needs.module.outputs.image` |
+| `repo_ref` | `github.sha` | which commit of the caller to check out, for `tests/` and the test script |
+| `version_tag` | branch under test | names the artifact. `workflow_run` callers must pass it, their context points at the default branch |
+| `script` | `test-module.sh` | test entry point |
+| `path` | | subdirectory holding the module, when it is not at the repository root |
+
+### The machine
+
+| Input | Default | |
+|---|---|---|
+| `runs_on` | `ubuntu-24.04` | must provide `/dev/kvm` |
+| `vm_mem` | `8192` | guest memory, MiB. The runner has 15360 and uses about 1500, so 12288 is the practical ceiling |
+| `vm_cpus` | `4` | guest vCPUs. The runner has 4 |
+| `disk_size` | `30G` | guest disk after resize |
+| `timeout_minutes` | `60` | a run takes about ten |
+| `debug_shell` | `false` | tmate session when the suite fails |
 
 ## The cloud image cache
 
