@@ -66,7 +66,8 @@ two modules. The rest have run at their defaults and nowhere else.
     with:
       distro: ${{ matrix.distro }}
       # cloud_image_url: ""            # overrides the URL implied by distro
-      # corebranch: ns8-stable         # branch or tag of ns8-core
+      # corebranch: ns8-stable         # which install.sh to download
+      # install_args: ""               # args for install.sh: a core image, module URLs
       # script: test-module.sh         # test entry point
       # path: ""                       # subdirectory holding the module
       # runs_on: ubuntu-24.04          # must provide /dev/kvm
@@ -138,7 +139,8 @@ asserts, then `remove-module`.
 |---|---|---|
 | `distro` | `rocky9` | `rocky9`, `debian12` or `debian13`. `bookworm` and `trixie` are accepted as aliases |
 | `cloud_image_url` | | overrides the URL implied by `distro` |
-| `corebranch` | `ns8-stable` | branch or tag of `ns8-core` |
+| `corebranch` | `ns8-stable` | git ref of `ns8-core` deciding which `install.sh` is downloaded |
+| `install_args` | | passed to `install.sh`. A core image replaces the `ns8-stable` it hardcodes; anything else is treated as a module to install |
 | `image_url` | | test this image instead of building one |
 | `script` | `test-module.sh` | test entry point |
 | `path` | | subdirectory holding the module |

@@ -28,6 +28,11 @@ on:
         type: string
         default: ns8-stable
         description: "Branch or tag of ns8-core to install from"
+      install_args:
+        required: false
+        type: string
+        default: ""
+        description: "Extra arguments for install.sh: a core image to replace ns8-stable, module URLs, or both"
       image_url:
         required: true
         type: string
@@ -509,11 +514,18 @@ jobs:
                  -i /keys/ns8ci root@${VM_IP} 'echo CONTAINER_TO_VM_SSH_OK; hostname -f'"
 
       - name: Install the NS8 core
+        env:
+          # corebranch picks which install.sh is downloaded; the script still
+          # hardcodes ns8-stable as the core image, so testing another one means
+          # passing it here.
+          INSTALL_ARGS: ${{ inputs.install_args }}
         run: |
           set -euo pipefail
+          # INSTALL_ARGS is left unquoted on purpose: install.sh iterates over
+          # its positional arguments, so a space-separated list has to split.
           ssh ns8 "set -e; cd /root; \
             curl -fsSL --retry 3 -O https://raw.githubusercontent.com/NethServer/ns8-core/${{ inputs.corebranch }}/core/install.sh; \
-            bash install.sh"
+            bash install.sh ${INSTALL_ARGS}"
 
       - name: Initialise the cluster
         run: |
