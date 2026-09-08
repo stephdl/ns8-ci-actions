@@ -215,8 +215,20 @@ cache can be in. GitHub deletes entries unused for 7 days and evicts by
 least-recently-used past 10 GB per repository, so nothing has to be pruned by
 hand. About 620 MB per distribution.
 
+The key also carries a digest of the image URL, because `cloud_image_url` can
+aim two callers with the same `distro` at different images.
+
 The restored file is checked against that same checksum before use: a mismatch
-warns, deletes it and refetches. A fresh download that fails the check is fatal.
+warns, deletes the file and refetches. A fresh download that fails is retried
+once against a freshly resolved checksum — a distribution republishing into
+`latest/` can leave the sum and the bytes a moment apart — and fatal after that.
+
+Two limits worth knowing. When no checksum is reachable beside the image the key
+falls back to the calendar week and **nothing verifies the bytes**; the run
+raises a warning saying so. And `actions/cache/save` cannot overwrite a key that
+already exists, so an entry that fails its checksum survives until GitHub evicts
+it, and every run until then refetches. Only the cache is lost: the image is
+verified before it boots either way.
 
 Two details worth knowing if you read the workflow. The save is explicit rather
 than left to `actions/cache`, whose post-job step would run after the guest has
