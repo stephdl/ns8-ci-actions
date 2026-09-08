@@ -75,7 +75,7 @@ asserts, then `remove-module`.
 
 | Input | Default | |
 |---|---|---|
-| `distro` | `rocky9` | `rocky9`, `debian12` or `debian13` |
+| `distro` | `rocky9` | `rocky9`, `debian12` or `debian13`. `bookworm` and `trixie` are accepted as aliases |
 | `cloud_image_url` | | overrides the URL implied by `distro` |
 | `corebranch` | `ns8-stable` | branch or tag of `ns8-core` |
 | `coremodules` | | extra module URLs passed to `install.sh` |
@@ -157,5 +157,6 @@ resolved on the node, and `list-installed-modules`.
 
 The artifact holds the Robot `log.html` and `report.html`, plus a `diag/`
 directory with the QEMU serial console, the guest journal, its
-`/etc/os-release`, listening sockets, and `podman ps` for every module user. That is usually enough to find the cause without opening a shell.
+`/etc/os-release`, the images it pulled, listening sockets, and `podman ps` for
+every module user. That is usually enough to find the cause without opening a shell.
 `debug_shell: true` gives you a tmate session when it is not.

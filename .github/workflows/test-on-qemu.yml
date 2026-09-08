@@ -17,7 +17,7 @@ on:
         required: false
         type: string
         default: rocky9
-        description: "Guest distribution: rocky9, debian12 or debian13"
+        description: "Guest distribution: rocky9, debian12 (bookworm) or debian13 (trixie)"
       cloud_image_url:
         required: false
         type: string
@@ -193,8 +193,9 @@ jobs:
           # A self-hosted runner keeps its filesystem between jobs, where
           # ssh-keygen would stop on its overwrite prompt.
           rm -f "${keyfile}" "${keyfile}.pub"
-          # RSA in PEM form: the ns8 module suites pin paramiko 2.9.2, which
-          # needs rsa-sha2-* to talk to OpenSSH 8.7 and later.
+          # RSA in PEM form: a module suite that still pins paramiko 2.9.2
+          # needs it to talk to OpenSSH 8.7 and later. A current paramiko
+          # handles rsa-sha2-* on its own and does not care.
           ssh-keygen -t rsa -b 4096 -m PEM -N '' -C ns8-ci -f "${keyfile}"
           echo "SSH_KEYFILE=${keyfile}" >> "${GITHUB_ENV}"
           # Same reason: appending unconditionally would stack duplicate Host
