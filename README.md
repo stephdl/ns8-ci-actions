@@ -27,6 +27,9 @@ output, which is what makes the same file work for every module.
 
 ## Versioning
 
-Callers pin `@v1`, a branch. It moves, but only when a change has been validated
-against a real module — `@main` changes on every commit, including one written
-mid-debugging. This repository keeps no tags.
+Callers pin `@v1`. It is the default branch and the one every change lands on,
+through a pull request validated against a real module, so it moves but never
+unreviewed.
+
+`main` is left where the repository started and is not maintained. There are no
+tags.
