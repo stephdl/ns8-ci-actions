@@ -371,8 +371,9 @@ jobs:
         run: |
           set -euo pipefail
           cd "${VM_DIR}"
-          # /mnt, not $HOME: the root filesystem has to keep room for the ~3 GB
-          # robot container image.
+          # /mnt on the current ubuntu-24.04 image is the root filesystem, which
+          # reports 87G free. The path is kept for runner images that do give
+          # /mnt its own larger disk.
           curl -fsSL --retry 3 --retry-delay 5 -o guest.qcow2 "${CLOUD_IMAGE_URL}"
           qemu-img resize guest.qcow2 "${{ inputs.disk_size }}"
           qemu-img info guest.qcow2
