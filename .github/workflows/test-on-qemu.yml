@@ -565,7 +565,12 @@ jobs:
             echo "digest: ${IMAGE_DIGEST:-unresolved}";
             ssh ns8 'podman images --digests --format "{{.Repository}}:{{.Tag}} {{.Digest}}"';
             ssh ns8 'api-cli run list-installed-modules'; }  > module-version.txt
-          ssh ns8 'cat /etc/os-release'                            > vm-os-release.txt
+          # The guest image URL tracks .latest, so the bytes behind it move. Keep
+          # the checksum next to what it produced: the run log carries it too,
+          # but GitHub drops logs after 90 days and this bundle can be archived.
+          { echo "url: ${CLOUD_IMAGE_URL}";
+            echo "${IMAGE_ALGO}: ${IMAGE_SUM}";
+            ssh ns8 'cat /etc/os-release'; }                       > vm-os-release.txt
           ssh ns8 'journalctl --no-pager -b'                       > vm-journal.log
           ssh ns8 'podman images --format "{{.Repository}}:{{.Tag}} {{.Size}}"' \
                                                                    > vm-images.txt
