@@ -15,7 +15,7 @@ single-node cluster and runs the module's own test suite against it.
 Three environments nested inside one another. Everything else follows from that.
 
 ```
-┌─ GitHub runner (ubuntu-24.04, throwaway Azure VM) ─────────────────┐
+┌─ GitHub runner (ubuntu-24.04, throwaway Azure VM) ──────────────────┐
 │                                                                     │
 │  buildah ──build-images.sh──┐                                       │
 │                             ▼                                       │
@@ -25,16 +25,16 @@ Three environments nested inside one another. Everything else follows from that.
 │    │                        │                                       │
 │    │ ns8tap0                │ pull                                  │
 │    ▼                        │                                       │
-│  ┌─ QEMU/KVM guest   192.168.77.10 ─────────────────────────┐      │
-│  │                                                           │      │
-│  │  ns8-core ── traefik :80 :443 ──> module pod              │      │
-│  │                                                           │      │
-│  └───────────────────────────────────────────────────────────┘      │
-│    ▲                                                                 │
-│    │ ssh root@192.168.77.10                                          │
+│  ┌─ QEMU/KVM guest   192.168.77.10 ──────────────────────┐          │
+│  │                                                       │          │
+│  │  ns8-core ── traefik :80 :443 ──> module pod          │          │
+│  │                                                       │          │
+│  └───────────────────────────────────────────────────────┘          │
+│    ▲                                                                │
+│    │ ssh root@192.168.77.10                                         │
 │  ┌─┴─ test container (netns=host) ─┐                                │
-│  │  test-module.sh → robot          │                                │
-│  └──────────────────────────────────┘                                │
+│  │  test-module.sh → robot         │                                │
+│  └─────────────────────────────────┘                                │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
