@@ -90,8 +90,9 @@ check on incoming pull requests.
 `concurrency` belongs to the caller in both modes: a reusable workflow cannot
 declare one that covers the calling run.
 
-Pin a tag, not `@main`. On `@main`, a change here silently changes the meaning of
-every caller's green tick, with no commit in their repository to point at.
+Pin `@v1`, not `@main`. `v1` is a single moving tag, so it still changes under
+you, but only when a change has been validated against a real module — `@main`
+changes on every commit, including one written mid-debugging.
 
 ## What the workflow expects from the module
 
@@ -200,6 +201,40 @@ Both optional.
 | `dockerhub_token` | |
 
 Pass them only if the module pulls enough Docker Hub images to risk a 429.
+
+## The cloud image cache
+
+Downloading the guest image dominated the Rocky job: 93 s, 263 s then 290 s over
+three runs, against 5 s for Debian, whose URL redirects to a CDN mirror. The
+image is now cached, keyed on the checksum the distribution publishes next to
+it.
+
+That key does the expiry by itself. A new point release changes the checksum,
+so the key changes, so the cache misses and the image is refetched. A hit is the
+upstream image whatever its age, which means "too old" stops being a state the
+cache can be in. GitHub deletes entries unused for 7 days and evicts by
+least-recently-used past 10 GB per repository, so nothing has to be pruned by
+hand. About 620 MB per distribution.
+
+The key also carries a digest of the image URL, because `cloud_image_url` can
+aim two callers with the same `distro` at different images.
+
+The restored file is checked against that same checksum before use: a mismatch
+warns, deletes the file and refetches. A fresh download that fails is retried
+once against a freshly resolved checksum — a distribution republishing into
+`latest/` can leave the sum and the bytes a moment apart — and fatal after that.
+
+Two limits worth knowing. When no checksum is reachable beside the image the key
+falls back to the calendar week and **nothing verifies the bytes**; the run
+raises a warning saying so. And `actions/cache/save` cannot overwrite a key that
+already exists, so an entry that fails its checksum survives until GitHub evicts
+it, and every run until then refetches. Only the cache is lost: the image is
+verified before it boots either way.
+
+Two details worth knowing if you read the workflow. The save is explicit rather
+than left to `actions/cache`, whose post-job step would run after the guest has
+written gigabytes into the disk. And the guest boots on a copy, so the cached
+base stays exactly what the checksum says.
 
 ## What a run produces
 

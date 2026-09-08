@@ -160,6 +160,15 @@ jobs:
           test -e /dev/kvm || { echo "::error::/dev/kvm is missing on runner '${{ inputs.runs_on }}'"; exit 1; }
           ls -l /dev/kvm
 
+      - name: Create the VM directory
+        run: |
+          set -euo pipefail
+          # /mnt on the current ubuntu-24.04 image is the root filesystem, which
+          # reports 87G free. The path is kept for runner images that do give
+          # /mnt its own larger disk.
+          sudo mkdir -p "${VM_DIR}"
+          sudo chown "$USER:$USER" "${VM_DIR}"
+
       - name: Install QEMU, cloud-image and build tooling
         run: |
           sudo apt-get update -qq
@@ -286,8 +295,6 @@ jobs:
       - name: Build the cloud-init seed
         run: |
           set -euo pipefail
-          sudo mkdir -p "${VM_DIR}"
-          sudo chown "$USER:$USER" "${VM_DIR}"
           pubkey=$(cat "${SSH_KEYFILE}.pub")
 
           cat > "${VM_DIR}/meta-data" <<EOF
@@ -389,14 +396,109 @@ jobs:
           cd "${VM_DIR}"
           cloud-localds -v --network-config=network-config seed.iso user-data meta-data
 
-      - name: Fetch and grow the cloud image
+      - name: Resolve the published image checksum
+        run: |
+          set -euo pipefail
+          # Kept as a script: the fetch step re-runs it when a download fails
+          # its checksum, which happens while a distribution republishes.
+          cat > "${VM_DIR}/resolve-sum.sh" <<'EOS'
+          #!/bin/bash
+          set -uo pipefail
+          base="${CLOUD_IMAGE_URL%/*}"
+          file="${CLOUD_IMAGE_URL##*/}"
+          case "${IMAGE_ALGO}" in
+            sha256) curl -fsSL --retry 3 --retry-delay 2 "${base}/CHECKSUM" \
+                      | awk -v f="${file}" '$0 ~ "\\("f"\\) =" {print $NF}' ;;
+            sha512) curl -fsSL --retry 3 --retry-delay 2 "${base}/SHA512SUMS" \
+                      | awk -v f="${file}" '$2==f {print $1}' ;;
+          esac
+          EOS
+          chmod +x "${VM_DIR}/resolve-sum.sh"
+
+          case "${{ inputs.distro }}" in
+            rocky9) algo=sha256 ;;
+            *)      algo=sha512 ;;
+          esac
+          export IMAGE_ALGO="${algo}"
+          echo "IMAGE_ALGO=${algo}" >> "${GITHUB_ENV}"
+
+          # Keying on the published checksum means a new point release changes
+          # the key by itself, and a hit is the upstream image whatever its age.
+          sum=$("${VM_DIR}/resolve-sum.sh" || true)
+          if [ -z "${sum}" ]; then
+            # A weekly key still caches, but nothing can verify the bytes, so
+            # this must not pass unnoticed.
+            echo "::warning::no checksum reachable beside ${CLOUD_IMAGE_URL}; caching on a weekly key and skipping verification"
+            sum="week-$(date -u +%G-%V)"
+          fi
+          echo "IMAGE_SUM=${sum}" >> "${GITHUB_ENV}"
+          # cloud_image_url can aim two callers with the same distro at
+          # different images. On the weekly key nothing else separates them.
+          echo "IMAGE_URL_ID=$(printf '%s' "${CLOUD_IMAGE_URL}" | sha256sum | cut -c1-12)" >> "${GITHUB_ENV}"
+          echo "checksum: ${sum}"
+
+      - uses: actions/cache/restore@v6
+        id: image-cache
+        with:
+          path: ${{ env.VM_DIR }}/base.qcow2
+          key: cloud-image-${{ inputs.distro }}-${{ env.IMAGE_URL_ID }}-${{ env.IMAGE_SUM }}
+
+      - name: Fetch and verify the cloud image
+        id: image
         run: |
           set -euo pipefail
           cd "${VM_DIR}"
-          # /mnt on the current ubuntu-24.04 image is the root filesystem, which
-          # reports 87G free. The path is kept for runner images that do give
-          # /mnt its own larger disk.
-          curl -fsSL --retry 3 --retry-delay 5 -o guest.qcow2 "${CLOUD_IMAGE_URL}"
+          verify() {
+            case "${IMAGE_SUM}" in week-*) return 0 ;; esac
+            echo "${IMAGE_SUM}  base.qcow2" | "${IMAGE_ALGO}sum" -c --status
+          }
+          if [ -f base.qcow2 ]; then
+            if verify; then
+              echo "cache hit, checksum matches"
+              echo "fetched=false" >> "${GITHUB_OUTPUT}"
+              exit 0
+            fi
+            # actions/cache/save cannot overwrite a key that exists, so this
+            # entry survives until GitHub evicts it and every run until then
+            # refetches. Only the cache is lost: the image is verified before
+            # it boots either way.
+            echo "::warning::the cached image does not match ${IMAGE_SUM}, refetching. The stale entry stays until GitHub evicts it."
+            rm -f base.qcow2
+          fi
+          for attempt in 1 2; do
+            curl -fsSL --retry 3 --retry-delay 5 -o base.qcow2 "${CLOUD_IMAGE_URL}"
+            if verify; then
+              break
+            fi
+            if [ "${attempt}" = 2 ]; then
+              echo "::error::${CLOUD_IMAGE_URL} does not match its published checksum"
+              exit 1
+            fi
+            # Debian republishes into latest/ in place, so the checksum read a
+            # moment ago can describe a release the download just missed.
+            echo "::warning::checksum mismatch on a fresh download, re-resolving once"
+            new=$("${VM_DIR}/resolve-sum.sh" || true)
+            if [ -n "${new}" ] && [ "${new}" != "${IMAGE_SUM}" ]; then
+              IMAGE_SUM="${new}"
+              echo "IMAGE_SUM=${new}" >> "${GITHUB_ENV}"
+            fi
+          done
+          echo "fetched=true" >> "${GITHUB_OUTPUT}"
+
+      - uses: actions/cache/save@v6
+        # Saved here rather than by actions/cache's post-job step, which would
+        # run after the guest has written gigabytes into the disk.
+        if: steps.image.outputs.fetched == 'true'
+        with:
+          path: ${{ env.VM_DIR }}/base.qcow2
+          key: cloud-image-${{ inputs.distro }}-${{ env.IMAGE_URL_ID }}-${{ env.IMAGE_SUM }}
+
+      - name: Prepare the guest disk
+        run: |
+          set -euo pipefail
+          cd "${VM_DIR}"
+          # A copy, so the cached base stays exactly what the checksum says.
+          cp base.qcow2 guest.qcow2
           qemu-img resize guest.qcow2 "${{ inputs.disk_size }}"
           qemu-img info guest.qcow2
 
