@@ -102,6 +102,9 @@ fork, so the chain runs and reports there.
 Every input has a default. These are the ones the examples leave out, with the
 value they take if you say nothing — uncomment what you need.
 
+Only `vm_mem` has been exercised at a value other than its default, at 12288 on
+two modules. The rest have run at their defaults and nowhere else.
+
 ```yaml
     with:
       distro: ${{ matrix.distro }}
@@ -120,6 +123,33 @@ value they take if you say nothing — uncomment what you need.
 ## How it works
 
 Three environments nested inside one another. Everything else follows from that.
+
+**Chained on the build**, what the callers above use: the guest pulls the published
+image through NAT.
+
+```
+┌─ GitHub runner (ubuntu-24.04, throwaway Azure VM) ──────────────────┐
+│                                                                     │
+│  ns8br0 192.168.77.1/24 ──── MASQUERADE ──> ghcr.io, docker.io      │
+│    │                                                                │
+│    │ ns8tap0                                                        │
+│    ▼                                                                │
+│  ┌─ QEMU/KVM guest   192.168.77.10 ──────────────────────┐          │
+│  │                                                       │          │
+│  │  ns8-core ── traefik :80 :443 ──> module pod          │          │
+│  │                                                       │          │
+│  └───────────────────────────────────────────────────────┘          │
+│    ▲                                                                │
+│    │ ssh root@192.168.77.10                                         │
+│  ┌─┴─ test container (netns=host) ─┐                                │
+│  │  test-module.sh → robot         │                                │
+│  └─────────────────────────────────┘                                │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+**Building from the checkout**: buildah builds on the runner and a throwaway
+registry serves it to the guest. Those three steps are skipped whenever
+`image_url` is set.
 
 ```
 ┌─ GitHub runner (ubuntu-24.04, throwaway Azure VM) ──────────────────┐
@@ -158,7 +188,8 @@ session to the guest and runs commands there.
 
 ### The three phases
 
-**1. Build the image, on the runner.** `build-images.sh` builds from the
+**1. Get the image.** Chained on a build, the guest pulls what the publish
+workflow pushed and the runner builds nothing. Otherwise: `build-images.sh` builds from the
 caller's checkout with `REPOBASE` pointed at the local registry, and reports
 what it built on its `images` output. That output is the entire contract: the
 workflow never needs to know the module's name.
