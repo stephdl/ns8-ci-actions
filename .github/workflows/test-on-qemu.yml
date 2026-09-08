@@ -467,7 +467,7 @@ jobs:
               "podman login --authfile /etc/containers/ci-auth.json -u '${DH_USER}' --password-stdin docker.io"
             ssh ns8 'chmod 0644 /etc/containers/ci-auth.json'
           else
-            echo "::notice::no dockerhub_user/dockerhub_token secret, pulling anonymously"
+            echo "no dockerhub_user/dockerhub_token secret, pulling anonymously"
           fi
 
       - name: Install the NS8 core
