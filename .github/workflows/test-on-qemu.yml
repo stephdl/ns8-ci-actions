@@ -437,7 +437,7 @@ jobs:
           echo "IMAGE_URL_ID=$(printf '%s' "${CLOUD_IMAGE_URL}" | sha256sum | cut -c1-12)" >> "${GITHUB_ENV}"
           echo "checksum: ${sum}"
 
-      - uses: actions/cache/restore@v4
+      - uses: actions/cache/restore@v6
         id: image-cache
         with:
           path: ${{ env.VM_DIR }}/base.qcow2
@@ -485,7 +485,7 @@ jobs:
           done
           echo "fetched=true" >> "${GITHUB_OUTPUT}"
 
-      - uses: actions/cache/save@v4
+      - uses: actions/cache/save@v6
         # Saved here rather than by actions/cache's post-job step, which would
         # run after the guest has written gigabytes into the disk.
         if: steps.image.outputs.fetched == 'true'
