@@ -3,12 +3,100 @@
 Boots a cloud image under KVM on the runner, installs the NS8 core, creates a
 single-node cluster and runs the module's own test suite against it.
 
+- [Choosing a mode](#choosing-a-mode)
+- [Calling it](#calling-it)
 - [How it works](#how-it-works)
 - [Inputs](#inputs)
 - [Secrets](#secrets)
 - [The cloud image cache](#the-cloud-image-cache)
 - [What a run produces](#what-a-run-produces)
 - [When it fails](#when-it-fails)
+
+## Choosing a mode
+
+Two ways to call it, and the difference is what gets tested and when.
+
+**Build from the checkout** builds the image from the caller's own checkout, so
+a pull request tests exactly its own code, and the result appears as a check on
+that pull request. It needs no secret and no published image, which is why it is
+the mode that works from a fork. It costs a second build of the same commit.
+
+**Chained on the build** waits for a publish workflow to succeed and tests the
+image it published. One build instead of two, and a broken build never reaches
+the test. In exchange, `workflow_run` raises no check on a pull request, and a
+fork's chain runs and reports inside the fork rather than upstream.
+
+Pick the first if incoming pull requests are what you want covered. Pick the
+second if you want to test the artifact you actually ship, and if the extra
+build bothers you. [ns8-pihole](https://github.com/stephdl/ns8-pihole/blob/main/.github/workflows/test-module-qemu.yml)
+uses the second.
+
+## Calling it
+
+### Build from the checkout, on the pull request
+
+```yaml
+name: "Test module on QEMU"
+
+on:
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        distro: [rocky9, debian13]
+    uses: stephdl/ns8-ci-actions/.github/workflows/test-on-qemu.yml@v1
+    with:
+      distro: ${{ matrix.distro }}
+```
+
+### Test the published image, chained on the build
+
+```yaml
+on:
+  workflow_run:
+    workflows: ["Publish images"]
+    types: [completed]
+
+concurrency:
+  # github.ref is the default branch under workflow_run, so it cannot key this.
+  group: ${{ github.workflow }}-${{ github.event.workflow_run.head_branch || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  module:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    uses: NethServer/ns8-github-actions/.github/workflows/module-info.yml@v1
+  test:
+    needs: module
+    strategy:
+      fail-fast: false
+      matrix:
+        distro: [rocky9, debian13]
+    uses: stephdl/ns8-ci-actions/.github/workflows/test-on-qemu.yml@v1
+    with:
+      distro: ${{ matrix.distro }}
+      image_url: ${{ needs.module.outputs.image }}
+      repo_ref: ${{ needs.module.outputs.sha }}
+      version_tag: ${{ needs.module.outputs.tag }}
+```
+
+`concurrency` belongs to the caller in both modes: a reusable workflow cannot
+declare one that covers the calling run.
+
+Under `workflow_run` the default context points at the default branch, not at
+the branch being tested, hence `repo_ref` and `version_tag`. Two further
+consequences are inherent to that trigger and apply to the upstream DigitalOcean
+workflow just the same: GitHub runs the definition from the default branch, and
+the run raises no check on a pull request. A fork's publish workflow runs in the
+fork, so the chain runs and reports there.
 
 ## How it works
 
