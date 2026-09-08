@@ -66,7 +66,11 @@ two modules. The rest have run at their defaults and nowhere else.
     with:
       distro: ${{ matrix.distro }}
       # --- the guest operating system
-      # cloud_image_url: ""            # a qcow2 URL, for a guest distro cannot name
+      # cloud_image_url: ""            # a qcow2 URL, for a guest distro cannot name.
+      #                                # distro: rocky9 tracks .latest, so pinning a
+      #                                # point release goes here:
+      #                                #   https://dl.rockylinux.org/pub/rocky/9/images/
+      #                                #   x86_64/Rocky-9-GenericCloud-Base-9.8-20260525.0.x86_64.qcow2
       # --- the NS8 core
       # corebranch: ns8-stable         # git ref of ns8-core: which install.sh runs
       # install_args: ""               # what that install.sh installs: a core image,
@@ -151,7 +155,7 @@ The virtual machine the node runs on. Nothing to do with containers.
 | Input | Default | |
 |---|---|---|
 | `distro` | `rocky9` | `rocky9`, `debian12` or `debian13`. `bookworm` and `trixie` are accepted as aliases |
-| `cloud_image_url` | | a qcow2 URL, overriding the one `distro` implies. For an image this workflow does not know |
+| `cloud_image_url` | | a qcow2 URL, overriding the one `distro` implies. `distro` tracks `.latest`, so pinning a point release goes here: `.../Rocky-9-GenericCloud-Base-9.8-20260525.0.x86_64.qcow2`. Also how to boot an image this workflow does not name at all |
 
 ### The NS8 core
 
