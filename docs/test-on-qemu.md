@@ -178,8 +178,9 @@ the dev script, which then installs stable anyway.
 | `image_url` | **required** | the module's container image, already published and reachable from the guest. Usually `needs.module.outputs.image` |
 | `repo_ref` | `github.sha` | which commit of the caller to check out, for `tests/` and the test script |
 | `version_tag` | branch under test | names the artifact. `workflow_run` callers must pass it, their context points at the default branch |
-| `script` | `test-module.sh` | test entry point |
+| `script` | `test-module.sh` | test entry point. Empty selects `scripts/test-module.sh` of this repository, and the module ships none |
 | `path` | | subdirectory holding the module, when it is not at the repository root |
+| `run_ui_tests` | `false` | reaches the script as `RUN_UI_TESTS`, and publishes the images of `tests/outputs/` on the pull request. See [Interface screenshots](#interface-screenshots) |
 
 ### The machine
 
@@ -239,6 +240,55 @@ test-outputs-rocky9-feat-8678
 
 `diag/module-version.txt` inside it records the image URL, the digests podman
 resolved on the node, and `list-installed-modules`.
+
+## Interface screenshots
+
+A suite can drive a browser against `cluster-admin` and save what it sees —
+`ns8-mail` does it, and so does `ns8-calrs`. Those cases are tagged `ui`, and
+the shared runner excludes them unless `RUN_UI_TESTS` is `true`, because they
+need the Playwright image rather than the slim Python one.
+
+`run_ui_tests` sets that variable. Once the suite is over, every image found
+under `tests/outputs/` is posted as a comment on the pull request of the ref
+under test:
+
+```
+### Interface of `rocky9`
+
+**1. Status**
+![1._Status.png](...)
+```
+
+The file name becomes the caption, underscores turned into spaces, so name the
+files in the order you want them read: `1._Status.png`, `2._Settings.png`.
+
+GitHub has no public API to attach an image to a comment, so the step uses
+[`cml`](https://cml.dev), which uploads the files and rewrites the Markdown
+links. It needs a token allowed to write pull requests, which **a called
+workflow cannot ask for**: grant it on the calling job, or the step is skipped.
+
+```yaml
+  test:
+    permissions:
+      contents: read
+      pull-requests: write
+    uses: stephdl/ns8-ci-actions/.github/workflows/test-on-qemu.yml@v1
+    with:
+      run_ui_tests: ${{ matrix.distro == 'rocky9' && needs.ui_tests.outputs.needed == 'true' }}
+```
+
+Two things that bite:
+
+- **One leg only.** Each leg carrying the flag comments, so a distribution
+  matrix posts the same images twice unless the caller picks one.
+- **`workflow_run` reads the default branch.** A `permissions:` block added on a
+  feature branch does not apply to that branch's own run; it has to land on the
+  default branch first.
+
+Deciding *when* is the caller's business. `ns8-calrs` mirrors NethServer's
+`check-ui-tests-needed.yml`: a `renovate-*` branch whose commit touched `ui/`
+or `build-images.sh`, or a manual dispatch asking for it. Every other push runs
+the suite without a browser.
 
 ## When it fails
 

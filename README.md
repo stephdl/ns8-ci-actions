@@ -59,7 +59,8 @@ request of the ref under test.
 
 That comment needs a token allowed to write pull requests, and a called
 workflow cannot ask for more than its caller holds. Grant it on the calling
-job, otherwise the step is skipped:
+job, otherwise the step is skipped — the details, and when to set the flag at
+all, are in [the workflow documentation](docs/test-on-qemu.md#interface-screenshots):
 
 ```yaml
   test:
