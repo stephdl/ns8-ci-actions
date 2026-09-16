@@ -98,11 +98,6 @@ jobs:
     runs-on: ${{ inputs.runs_on }}
     timeout-minutes: ${{ inputs.timeout_minutes }}
 
-    permissions:
-      contents: read
-      # The screenshot comment is written with the job token
-      pull-requests: write
-
     env:
       VM_IP: 192.168.77.10
       GW_IP: 192.168.77.1
@@ -618,8 +613,12 @@ jobs:
 
       # GitHub has no public API to attach an image to a comment. cml uploads the
       # local files and rewrites the Markdown links, so the images render inline.
+      # The token needs pull-requests: write, which a called workflow cannot ask
+      # for: the caller grants it, and this step is skipped rather than failing
+      # when it did not.
       - name: Publish the screenshots on the pull request
         if: ${{ always() && inputs.run_ui_tests }}
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
           REPO_TOKEN: ${{ github.token }}
