@@ -44,6 +44,14 @@ jobs:
       version_tag: ${{ needs.module.outputs.tag }}
 ```
 
+That file is the whole of it. The suite runs in a slim Python image, the cases
+tagged `ui` are excluded, and nothing is posted on the pull request — see
+[Interface screenshots](#interface-screenshots) to turn them on.
+
+`script` is left out, so the module's own `test-module.sh` is used. Pass
+`script: ""` instead and the shared runner of this repository takes over: the
+module can then delete its copy, which is one less file drifting from the rest.
+
 `concurrency` belongs to the caller: a reusable workflow cannot
 declare one that covers the calling run.
 
@@ -264,44 +272,32 @@ files in the order you want them read: `1._Status.png`, `2._Settings.png`.
 
 GitHub has no public API to attach an image to a comment, so the step uses
 [`cml`](https://cml.dev), which uploads the files and rewrites the Markdown
-links. It needs a token allowed to write pull requests, which **a called
-workflow cannot ask for**: grant it on the calling job, or the step is skipped.
+links.
 
-### Without them
+### The caller, with screenshots
 
-The default. Nothing to declare: the example under [Calling it](#calling-it) runs
-the suite in a slim image with `--exclude ui`, and no comment is posted.
-
-### With them, on every run
-
-One input, and the permission the comment needs:
-
-```yaml
-  test:
-    needs: module
-    permissions:
-      contents: read
-      pull-requests: write
-    strategy:
-      matrix:
-        distro: [rocky9, debian13]
-    uses: stephdl/ns8-ci-actions/.github/workflows/test-on-qemu.yml@v1
-    with:
-      distro: ${{ matrix.distro }}
-      image_url: ${{ needs.module.outputs.image }}
-      repo_ref: ${{ needs.module.outputs.sha }}
-      version_tag: ${{ needs.module.outputs.tag }}
-      # One leg only: every leg carrying the flag comments, so a matrix would
-      # post the same images twice
-      run_ui_tests: ${{ matrix.distro == 'rocky9' }}
-```
-
-### With them, only when the interface moved
-
-Screenshots are worth reading when something could have changed them, and noise
-otherwise. A job deciding beforehand keeps the browser out of every other run:
+The same file as above, with a job deciding whether the images are worth taking
+and the permission the comment needs. Screenshots read well on a dependency bump
+that could have moved the interface, and are noise on every other push, so the
+decision is: a `renovate-*` branch whose commit touched `ui/` or
+`build-images.sh`. It is the rule `NethServer/ns8-github-actions` applies under
+its `on_renovate_ui_change` strategy.
 
 ```yaml
+on:
+  workflow_run:
+    workflows: ["Publish images"]
+    types: [completed]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.workflow_run.head_branch || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  module:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    uses: NethServer/ns8-github-actions/.github/workflows/module-info.yml@v1
+
   ui_tests:
     needs: module
     runs-on: ubuntu-latest
@@ -322,13 +318,32 @@ otherwise. A job deciding beforehand keeps the browser out of every other run:
           case "${BRANCH}" in renovate-*|renovate/*) bump=true ;; *) bump=false ;; esac
           [ "${touched_ui}" = true ] && [ "${bump}" = true ] && needed=true || needed=false
           echo "needed=${needed}" >> "$GITHUB_OUTPUT"
+
+  test:
+    needs: [module, ui_tests]
+    # The comment is written with the job token, and a called workflow cannot
+    # hold more than its caller
+    permissions:
+      contents: read
+      pull-requests: write
+    strategy:
+      fail-fast: false
+      matrix:
+        distro: [rocky9, debian13]
+    uses: stephdl/ns8-ci-actions/.github/workflows/test-on-qemu.yml@v1
+    with:
+      distro: ${{ matrix.distro }}
+      image_url: ${{ needs.module.outputs.image }}
+      repo_ref: ${{ needs.module.outputs.sha }}
+      version_tag: ${{ needs.module.outputs.tag }}
+      script: ""
+      # One leg only: every leg carrying the flag comments, so a matrix would
+      # post the same images twice
+      run_ui_tests: ${{ matrix.distro == 'rocky9' && needs.ui_tests.outputs.needed == 'true' }}
 ```
 
-Then `run_ui_tests: ${{ matrix.distro == 'rocky9' && needs.ui_tests.outputs.needed == 'true' }}`,
-with `ui_tests` added to the `needs` of the test job. This is the rule
-`NethServer/ns8-github-actions` applies under its `on_renovate_ui_change`
-strategy: a dependency bump that could move the interface, reviewed by looking
-at it.
+Drop the `ui_tests` job and pass `run_ui_tests: ${{ matrix.distro == 'rocky9' }}`
+to capture on every run instead.
 
 ### Two traps
 

@@ -30,10 +30,12 @@ No secret is needed.
 ## The shared test runner
 
 `scripts/test-module.sh` runs the `tests/` directory of a module inside a
-Podman container, against a live NS8 cluster. A module that calls
-`test-on-qemu.yml` with `script: ""` uses it and needs no script of its own; the
-default keeps the module's own `test-module.sh`, so nothing changes for the
-modules that ship one.
+Podman container, against a live NS8 cluster.
+
+A module calling `test-on-qemu.yml` with `script: ""` uses this copy and can
+**delete its own `test-module.sh`**: one less file to keep in step with the
+others. The default keeps the module's script, so nothing moves under the
+modules that still ship one.
 
 Install it once to run the suite from your workstation:
 
@@ -58,17 +60,9 @@ publishes the images found under `tests/outputs/` as a comment on the pull
 request of the ref under test.
 
 That comment needs a token allowed to write pull requests, and a called
-workflow cannot ask for more than its caller holds. Grant it on the calling
-job, otherwise the step is skipped — the details, and when to set the flag at
-all, are in [the workflow documentation](docs/test-on-qemu.md#interface-screenshots):
-
-```yaml
-  test:
-    permissions:
-      contents: read
-      pull-requests: write
-    uses: stephdl/ns8-ci-actions/.github/workflows/test-on-qemu.yml@v1
-```
+workflow cannot ask for more than its caller holds, so the calling job grants
+it. [The workflow documentation](docs/test-on-qemu.md#interface-screenshots)
+carries the caller file to copy, with and without the screenshots.
 
 ## Versioning
 
