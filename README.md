@@ -57,6 +57,18 @@ The workflow sets `RUN_UI_TESTS` from its own `run_ui_tests` input, and
 publishes the images found under `tests/outputs/` as a comment on the pull
 request of the ref under test.
 
+That comment needs a token allowed to write pull requests, and a called
+workflow cannot ask for more than its caller holds. Grant it on the calling
+job, otherwise the step is skipped:
+
+```yaml
+  test:
+    permissions:
+      contents: read
+      pull-requests: write
+    uses: stephdl/ns8-ci-actions/.github/workflows/test-on-qemu.yml@v1
+```
+
 ## Versioning
 
 Callers pin `@v1`. It is the default branch and the one every change lands on,
