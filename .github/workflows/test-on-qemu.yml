@@ -87,11 +87,21 @@ on:
         type: boolean
         default: false
         description: "Open a tmate shell when the suite fails"
+      run_ui_tests:
+        required: false
+        type: boolean
+        default: false
+        description: "Reaches the test script as RUN_UI_TESTS, and publishes the images of tests/outputs as a comment on the pull request. Callers running a matrix should set it on one leg only, or every leg comments"
 
 jobs:
   test-module:
     runs-on: ${{ inputs.runs_on }}
     timeout-minutes: ${{ inputs.timeout_minutes }}
+
+    permissions:
+      contents: read
+      # The screenshot comment is written with the job token
+      pull-requests: write
 
     env:
       VM_IP: 192.168.77.10
@@ -550,6 +560,8 @@ jobs:
         id: suite
         continue-on-error: true
         working-directory: ${{ github.workspace }}/${{ inputs.path }}
+        env:
+          RUN_UI_TESTS: ${{ inputs.run_ui_tests }}
         run: |
           set -o pipefail
           bash "./${{ inputs.script }}" "${VM_IP}" "${IMAGE_URL}"
@@ -590,6 +602,51 @@ jobs:
           path: ${{ github.workspace }}/${{ inputs.path }}/tests/outputs
           if-no-files-found: warn
           retention-days: 14
+
+      # GitHub has no public API to attach an image to a comment. cml uploads the
+      # local files and rewrites the Markdown links, so the images render inline.
+      - name: Publish the screenshots on the pull request
+        if: ${{ always() && inputs.run_ui_tests }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO_TOKEN: ${{ github.token }}
+          OUTPUT_DIR: ${{ github.workspace }}/${{ inputs.path }}/tests/outputs
+        run: |
+          set -euo pipefail
+          # workflow_run carries no pull request context: look the number up
+          pr_number="${{ github.event.pull_request.number }}"
+          if [ -z "$pr_number" ]; then
+            branch="${{ github.event.workflow_run.head_branch || github.head_ref || github.ref_name }}"
+            pr_number=$(gh pr list --repo "${{ github.repository }}" --head "$branch" \
+                          --state open --json number --jq '.[0].number' 2>/dev/null || echo "")
+          fi
+          if [ -z "$pr_number" ]; then
+            echo "No open pull request for this ref: nothing to comment"
+            exit 0
+          fi
+
+          mapfile -d '' shots < <(find "${OUTPUT_DIR}" -type f \
+            \( -iname '*.png' -o -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.webp' \) \
+            -print0 2>/dev/null | sort -z)
+          if [ ${#shots[@]} -eq 0 ]; then
+            echo "No image under ${OUTPUT_DIR}: nothing to comment"
+            exit 0
+          fi
+
+          npm install --location=global @dvcorg/cml
+          {
+            echo "### Interface of \`${{ inputs.distro }}\`"
+            echo
+            for f in "${shots[@]}"; do
+              name=$(basename "${f%.*}")
+              echo "**${name//_/ }**"
+              echo
+              echo "![$(basename "$f")]($f)"
+              echo
+            done
+          } > comment.md
+          cml comment create --target=pr/$pr_number \
+            --repo="https://github.com/${{ github.repository }}" comment.md
 
       - name: Debug shell
         if: ${{ steps.suite.outcome == 'failure' && inputs.debug_shell }}
