@@ -243,10 +243,10 @@ resolved on the node, and `list-installed-modules`.
 
 ## Interface screenshots
 
-A suite can drive a browser against `cluster-admin` and save what it sees —
-`ns8-mail` does it, and so does `ns8-calrs`. Those cases are tagged `ui`, and
-the shared runner excludes them unless `RUN_UI_TESTS` is `true`, because they
-need the Playwright image rather than the slim Python one.
+A suite can drive a browser against `cluster-admin` and save what it sees. Those
+cases are tagged `ui`, and the shared runner excludes them unless
+`RUN_UI_TESTS` is `true`, because they need the Playwright image rather than the
+slim Python one.
 
 `run_ui_tests` sets that variable. Once the suite is over, every image found
 under `tests/outputs/` is posted as a comment on the pull request of the ref
@@ -267,28 +267,76 @@ GitHub has no public API to attach an image to a comment, so the step uses
 links. It needs a token allowed to write pull requests, which **a called
 workflow cannot ask for**: grant it on the calling job, or the step is skipped.
 
+### Without them
+
+The default. Nothing to declare: the example under [Calling it](#calling-it) runs
+the suite in a slim image with `--exclude ui`, and no comment is posted.
+
+### With them, on every run
+
+One input, and the permission the comment needs:
+
 ```yaml
   test:
+    needs: module
     permissions:
       contents: read
       pull-requests: write
+    strategy:
+      matrix:
+        distro: [rocky9, debian13]
     uses: stephdl/ns8-ci-actions/.github/workflows/test-on-qemu.yml@v1
     with:
-      run_ui_tests: ${{ matrix.distro == 'rocky9' && needs.ui_tests.outputs.needed == 'true' }}
+      distro: ${{ matrix.distro }}
+      image_url: ${{ needs.module.outputs.image }}
+      repo_ref: ${{ needs.module.outputs.sha }}
+      version_tag: ${{ needs.module.outputs.tag }}
+      # One leg only: every leg carrying the flag comments, so a matrix would
+      # post the same images twice
+      run_ui_tests: ${{ matrix.distro == 'rocky9' }}
 ```
 
-Two things that bite:
+### With them, only when the interface moved
+
+Screenshots are worth reading when something could have changed them, and noise
+otherwise. A job deciding beforehand keeps the browser out of every other run:
+
+```yaml
+  ui_tests:
+    needs: module
+    runs-on: ubuntu-latest
+    outputs:
+      needed: ${{ steps.decide.outputs.needed }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.module.outputs.sha }}
+          fetch-depth: 2
+      - id: decide
+        env:
+          BRANCH: ${{ github.event.workflow_run.head_branch || github.ref_name }}
+        run: |
+          set -euo pipefail
+          git diff --name-only HEAD^ HEAD | grep -qE '^ui/|^build-images.sh$' \
+            && touched_ui=true || touched_ui=false
+          case "${BRANCH}" in renovate-*|renovate/*) bump=true ;; *) bump=false ;; esac
+          [ "${touched_ui}" = true ] && [ "${bump}" = true ] && needed=true || needed=false
+          echo "needed=${needed}" >> "$GITHUB_OUTPUT"
+```
+
+Then `run_ui_tests: ${{ matrix.distro == 'rocky9' && needs.ui_tests.outputs.needed == 'true' }}`,
+with `ui_tests` added to the `needs` of the test job. This is the rule
+`NethServer/ns8-github-actions` applies under its `on_renovate_ui_change`
+strategy: a dependency bump that could move the interface, reviewed by looking
+at it.
+
+### Two traps
 
 - **One leg only.** Each leg carrying the flag comments, so a distribution
   matrix posts the same images twice unless the caller picks one.
 - **`workflow_run` reads the default branch.** A `permissions:` block added on a
   feature branch does not apply to that branch's own run; it has to land on the
   default branch first.
-
-Deciding *when* is the caller's business. `ns8-calrs` mirrors NethServer's
-`check-ui-tests-needed.yml`: a `renovate-*` branch whose commit touched `ui/`
-or `build-images.sh`, or a manual dispatch asking for it. Every other push runs
-the suite without a browser.
 
 ## When it fails
 
