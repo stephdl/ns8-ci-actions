@@ -41,7 +41,7 @@ on:
         required: false
         type: string
         default: test-module.sh
-        description: "Test script to run, relative to `path`"
+        description: "Test script to run, relative to `path`. Empty selects scripts/test-module.sh of this repository, so a module needs no script of its own"
       path:
         required: false
         type: string
@@ -117,6 +117,14 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.repo_ref }}
+
+      - name: Check out the shared test runner
+        if: ${{ inputs.script == '' }}
+        uses: actions/checkout@v7
+        with:
+          repository: stephdl/ns8-ci-actions
+          ref: v1
+          path: .ci-actions
 
       - name: Derive the version tag
         env:
@@ -564,7 +572,12 @@ jobs:
           RUN_UI_TESTS: ${{ inputs.run_ui_tests }}
         run: |
           set -o pipefail
-          bash "./${{ inputs.script }}" "${VM_IP}" "${IMAGE_URL}"
+          if [ -n "${{ inputs.script }}" ]; then
+            script_path="${MODULE_DIR}/${{ inputs.script }}"
+          else
+            script_path="${{ github.workspace }}/.ci-actions/scripts/test-module.sh"
+          fi
+          bash "$script_path" "${VM_IP}" "${IMAGE_URL}"
 
       - name: Collect diagnostics
         if: always()
