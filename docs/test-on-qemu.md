@@ -44,6 +44,14 @@ jobs:
       version_tag: ${{ needs.module.outputs.tag }}
 ```
 
+That file is the whole of it. The suite runs in a slim Python image, the cases
+tagged `ui` are excluded, and nothing is posted on the pull request — see
+[Interface screenshots](#interface-screenshots) to turn them on.
+
+`script` is left out, so the module's own `test-module.sh` is used. Pass
+`script: ""` instead and the shared runner of this repository takes over: the
+module can then delete its copy, which is one less file drifting from the rest.
+
 `concurrency` belongs to the caller: a reusable workflow cannot
 declare one that covers the calling run.
 
@@ -178,8 +186,9 @@ the dev script, which then installs stable anyway.
 | `image_url` | **required** | the module's container image, already published and reachable from the guest. Usually `needs.module.outputs.image` |
 | `repo_ref` | `github.sha` | which commit of the caller to check out, for `tests/` and the test script |
 | `version_tag` | branch under test | names the artifact. `workflow_run` callers must pass it, their context points at the default branch |
-| `script` | `test-module.sh` | test entry point |
+| `script` | `test-module.sh` | test entry point. Empty selects `scripts/test-module.sh` of this repository, and the module ships none |
 | `path` | | subdirectory holding the module, when it is not at the repository root |
+| `run_ui_tests` | `false` | reaches the script as `RUN_UI_TESTS`, and publishes the images of `tests/outputs/` on the pull request. See [Interface screenshots](#interface-screenshots) |
 
 ### The machine
 
@@ -239,6 +248,110 @@ test-outputs-rocky9-feat-8678
 
 `diag/module-version.txt` inside it records the image URL, the digests podman
 resolved on the node, and `list-installed-modules`.
+
+## Interface screenshots
+
+A suite can drive a browser against `cluster-admin` and save what it sees. Those
+cases are tagged `ui`, and the shared runner excludes them unless
+`RUN_UI_TESTS` is `true`, because they need the Playwright image rather than the
+slim Python one.
+
+`run_ui_tests` sets that variable. Once the suite is over, every image found
+under `tests/outputs/` is posted as a comment on the pull request of the ref
+under test:
+
+```
+### Interface of `rocky9`
+
+**1. Status**
+![1._Status.png](...)
+```
+
+The file name becomes the caption, underscores turned into spaces, so name the
+files in the order you want them read: `1._Status.png`, `2._Settings.png`.
+
+GitHub has no public API to attach an image to a comment, so the step uses
+[`cml`](https://cml.dev), which uploads the files and rewrites the Markdown
+links.
+
+### The caller, with screenshots
+
+The same file as above, with a job deciding whether the images are worth taking
+and the permission the comment needs. Screenshots read well on a dependency bump
+that could have moved the interface, and are noise on every other push, so the
+decision is: a `renovate-*` branch whose commit touched `ui/` or
+`build-images.sh`. It is the rule `NethServer/ns8-github-actions` applies under
+its `on_renovate_ui_change` strategy.
+
+```yaml
+on:
+  workflow_run:
+    workflows: ["Publish images"]
+    types: [completed]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.workflow_run.head_branch || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  module:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    uses: NethServer/ns8-github-actions/.github/workflows/module-info.yml@v1
+
+  ui_tests:
+    needs: module
+    runs-on: ubuntu-latest
+    outputs:
+      needed: ${{ steps.decide.outputs.needed }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.module.outputs.sha }}
+          fetch-depth: 2
+      - id: decide
+        env:
+          BRANCH: ${{ github.event.workflow_run.head_branch || github.ref_name }}
+        run: |
+          set -euo pipefail
+          git diff --name-only HEAD^ HEAD | grep -qE '^ui/|^build-images.sh$' \
+            && touched_ui=true || touched_ui=false
+          case "${BRANCH}" in renovate-*|renovate/*) bump=true ;; *) bump=false ;; esac
+          [ "${touched_ui}" = true ] && [ "${bump}" = true ] && needed=true || needed=false
+          echo "needed=${needed}" >> "$GITHUB_OUTPUT"
+
+  test:
+    needs: [module, ui_tests]
+    # The comment is written with the job token, and a called workflow cannot
+    # hold more than its caller
+    permissions:
+      contents: read
+      pull-requests: write
+    strategy:
+      fail-fast: false
+      matrix:
+        distro: [rocky9, debian13]
+    uses: stephdl/ns8-ci-actions/.github/workflows/test-on-qemu.yml@v1
+    with:
+      distro: ${{ matrix.distro }}
+      image_url: ${{ needs.module.outputs.image }}
+      repo_ref: ${{ needs.module.outputs.sha }}
+      version_tag: ${{ needs.module.outputs.tag }}
+      script: ""
+      # One leg only: every leg carrying the flag comments, so a matrix would
+      # post the same images twice
+      run_ui_tests: ${{ matrix.distro == 'rocky9' && needs.ui_tests.outputs.needed == 'true' }}
+```
+
+Drop the `ui_tests` job and pass `run_ui_tests: ${{ matrix.distro == 'rocky9' }}`
+to capture on every run instead.
+
+### Two traps
+
+- **One leg only.** Each leg carrying the flag comments, so a distribution
+  matrix posts the same images twice unless the caller picks one.
+- **`workflow_run` reads the default branch.** A `permissions:` block added on a
+  feature branch does not apply to that branch's own run; it has to land on the
+  default branch first.
 
 ## When it fails
 
