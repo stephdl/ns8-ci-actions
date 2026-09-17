@@ -90,6 +90,10 @@ lines carry prose, not keys: delete them rather than uncomment them.
       # --- the module under test
       # script: test-module.sh         # test entry point in the caller repository
       # path: ""                       # subdirectory, when the module is not at the root
+      # ci_actions_ref: v1             # ref this repository is read at, when script is empty
+      # args: ""                       # extra arguments forwarded to robot
+      # artifact_suffix: ""            # extra segment naming a leg beyond distro
+      # update_from: ""                # baseline an update scenario started from, for the summary
       # --- the machine
       # runs_on: ubuntu-24.04          # must provide /dev/kvm
       # vm_mem: 8192                   # guest memory, MiB. 12288 is the ceiling
@@ -245,11 +249,13 @@ base stays exactly what the checksum says.
 
 The image is tagged with the branch under test, so `add-module` in the Robot log
 reads `192.168.77.1:5000/pihole:feat-8678` rather than an anonymous tag, and the
-run summary names it. The artifact carries the same slug:
+run summary names it. The artifact carries the same slug, plus `artifact_suffix`
+when the caller matrixes on more than `distro`:
 
 ```
 test-outputs-debian13-feat-8678
 test-outputs-rocky9-feat-8678
+test-outputs-rocky9-update-feat-8678
 ```
 
 `diag/module-version.txt` inside it records the image URL, the digests podman

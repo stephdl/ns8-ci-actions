@@ -57,7 +57,7 @@ What the module under test is:
 |---|---|---|
 | `image_name` | _(derived)_ | Only when `reponame` in `build-images.sh` differs from the repository name minus its `ns8-` prefix. Empty derives it, which is right for most modules |
 | `path` | `""` | Subdirectory holding the module |
-| `script` | `""` | Empty runs the shared `scripts/test-module.sh`, which is what a module should want |
+| `script` | `""` | Empty runs the shared `scripts/test-module.sh`, which is what a module should want. A named script never receives `-v SCENARIO:`, since it was not written to expect it |
 | `ci_actions_ref` | `v1` | Ref this repository is read at for that shared runner. Pass the same ref as `uses:` when testing a branch of `ns8-ci-actions` |
 
 What to cover:
@@ -100,12 +100,13 @@ leg also gets `-v UPDATE_FROM:<image>`.
 `ns8-github-actions` needs no `UPDATE_FROM` because its update leg tests core
 modules, which `install.sh` seeds at the stable version. An app module is
 installed by its own suite, so the baseline has to be named. Handle it like
-this, defaulting the variable so the suite still runs by hand:
+this, leaving `UPDATE_FROM` undefined: the CI always passes it, and a manual
+`update` run without it fails on a clear "Variable not found" rather than
+testing against a baseline nobody chose:
 
 ```robot
 *** Variables ***
 ${SCENARIO}       install
-${UPDATE_FROM}    ghcr.io/your-owner/your-module:latest
 
 *** Test Cases ***
 Install the module
