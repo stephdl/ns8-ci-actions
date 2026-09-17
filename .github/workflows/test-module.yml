@@ -1,0 +1,193 @@
+name: "Test module"
+
+# Drop-in replacement for NethServer/ns8-github-actions/.github/workflows/test-module.yml,
+# running on a throwaway QEMU node instead of a DigitalOcean droplet. A module
+# swaps the owner and repository in its `uses:` line and keeps the rest.
+#
+# The DigitalOcean wrapper picks two nodes from a pool and alternates them; here
+# the distro is a matrix dimension, so the same coverage comes from the matrix.
+
+on:
+  workflow_call:
+    inputs:
+      # --- Identical to the Nethesis wrapper -------------------------------
+      ui_tests_strategy:
+        required: false
+        type: string
+        default: on_renovate_ui_change
+        description: "When to run UI tests: always, on_ui_change, on_renovate_ui_change, never"
+      debug_shell:
+        required: false
+        type: boolean
+        default: false
+        description: "Debug shell"
+
+      # --- What the module under test is ----------------------------------
+      image_name:
+        required: false
+        type: string
+        default: ""
+        description: "Image name when it differs from the repository name, as `reponame` in build-images.sh does for ns8-postgresql18. Empty derives it from the repository"
+      path:
+        required: false
+        type: string
+        default: ""
+        description: "Subdirectory of the caller repository holding the module"
+      script:
+        required: false
+        type: string
+        default: ""
+        description: "Test script to run, relative to `path`. Empty selects the shared scripts/test-module.sh, which is what a module should want"
+
+      # --- What to cover --------------------------------------------------
+      distros:
+        required: false
+        type: string
+        default: '["rocky9","debian13"]'
+        description: "JSON array of guest distributions to test on"
+      scenarios:
+        required: false
+        type: string
+        default: '["install","update"]'
+        description: "JSON array of scenarios. `install` tests the image on a clean node, `update` installs a baseline first and upgrades to it. A suite that ignores $SCENARIO should ask for install alone"
+      update_from:
+        required: false
+        type: string
+        default: ""
+        description: "Tag the update scenario starts from. Empty resolves the newest non-prerelease release, then falls back to latest"
+      ui_test_distro:
+        required: false
+        type: string
+        default: rocky9
+        description: "Publish screenshots from this leg only. The browser is the same everywhere, so more legs only means more comments"
+      ui_test_scenario:
+        required: false
+        type: string
+        default: install
+        description: "Publish screenshots from this scenario only"
+
+      # --- Guest and runner sizing ----------------------------------------
+      corebranch:
+        required: false
+        type: string
+        default: ns8-stable
+        description: "Branch or tag of ns8-core to install from"
+      runs_on:
+        required: false
+        type: string
+        default: ubuntu-24.04
+        description: "Runner label. It must provide /dev/kvm"
+      vm_mem:
+        required: false
+        type: number
+        default: 8192
+        description: "Guest memory in MiB"
+      vm_cpus:
+        required: false
+        type: number
+        default: 4
+        description: "Guest vCPU count"
+      disk_size:
+        required: false
+        type: string
+        default: 30G
+        description: "Guest disk size after resize"
+      timeout_minutes:
+        required: false
+        type: number
+        default: 60
+        description: "Per-leg job timeout"
+
+    secrets:
+      do_token:
+        required: false
+        description: "Unused. Declared so a caller moving off the DigitalOcean wrapper keeps working without editing its secrets block"
+
+jobs:
+  module:
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event.workflow_run.conclusion == '' }}
+    uses: NethServer/ns8-github-actions/.github/workflows/module-info.yml@v1
+
+  check_ui_tests_needed:
+    uses: NethServer/ns8-github-actions/.github/workflows/check-ui-tests-needed.yml@v1
+    with:
+      ui_tests_strategy: ${{ inputs.ui_tests_strategy }}
+      head_sha: ${{ github.event.workflow_run.head_sha || github.sha }}
+      head_branch: ${{ github.event.workflow_run.head_branch || github.ref_name }}
+
+  # The update scenario needs a version to start from. A core module gets it from
+  # install.sh, which seeds the stable core; an app module is installed by its own
+  # suite, so the baseline has to be named here.
+  baseline:
+    if: ${{ contains(fromJSON(inputs.scenarios), 'update') }}
+    needs: module
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.resolve.outputs.image }}
+    steps:
+      - id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPLICIT_TAG: ${{ inputs.update_from }}
+          IMAGE: ${{ format('ghcr.io/{0}/{1}', needs.module.outputs.owner, inputs.image_name != '' && inputs.image_name || needs.module.outputs.name) }}
+        run: |
+          set -euo pipefail
+          if [ -n "${EXPLICIT_TAG}" ]; then
+            tag="${EXPLICIT_TAG}"
+          else
+            # A prerelease is not what a user upgrades from, so skip it. No
+            # release at all means the module never shipped: main is the only
+            # baseline there is.
+            tag=$(gh release list --repo "${{ github.repository }}" \
+                    --exclude-pre-releases --exclude-drafts \
+                    --limit 1 --json tagName --jq '.[0].tagName' 2>/dev/null || true)
+            tag="${tag:-latest}"
+          fi
+          echo "image=${IMAGE}:${tag}" >> "${GITHUB_OUTPUT}"
+          echo "Update scenario starts from ${IMAGE}:${tag}"
+
+  test:
+    needs: [module, check_ui_tests_needed, baseline]
+    # baseline is skipped when no update leg was asked for, and a skipped need
+    # would otherwise skip this job too. It must not have failed, though: an
+    # unresolved baseline would reach robot as an empty -v UPDATE_FROM:.
+    if: ${{ always()
+            && needs.module.result == 'success'
+            && needs.check_ui_tests_needed.result == 'success'
+            && (needs.baseline.result == 'success' || needs.baseline.result == 'skipped') }}
+    # github.ref is the default branch under workflow_run, so it cannot key this.
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.event.workflow_run.head_branch || github.ref }}-${{ matrix.distro }}-${{ matrix.scenario }}
+      cancel-in-progress: true
+    # The screenshots are published as a comment, and a called workflow cannot
+    # hold more than its caller: the permission is granted by the module's own
+    # caller job, not here.
+    permissions:
+      contents: read
+      pull-requests: write
+    strategy:
+      fail-fast: false
+      matrix:
+        distro: ${{ fromJSON(inputs.distros) }}
+        scenario: ${{ fromJSON(inputs.scenarios) }}
+    uses: ./.github/workflows/test-on-qemu.yml
+    with:
+      distro: ${{ matrix.distro }}
+      image_url: ${{ inputs.image_name != '' && format('ghcr.io/{0}/{1}:{2}', needs.module.outputs.owner, inputs.image_name, needs.module.outputs.tag) || needs.module.outputs.image }}
+      repo_ref: ${{ needs.module.outputs.sha }}
+      version_tag: ${{ needs.module.outputs.tag }}
+      path: ${{ inputs.path }}
+      script: ${{ inputs.script }}
+      args: >-
+        -v SCENARIO:${{ matrix.scenario }}
+        ${{ matrix.scenario == 'update' && format('-v UPDATE_FROM:{0}', needs.baseline.outputs.image) || '' }}
+      run_ui_tests: ${{ matrix.distro == inputs.ui_test_distro
+                        && matrix.scenario == inputs.ui_test_scenario
+                        && needs.check_ui_tests_needed.outputs.ui_tests_needed == 'true' }}
+      corebranch: ${{ inputs.corebranch }}
+      runs_on: ${{ inputs.runs_on }}
+      vm_mem: ${{ inputs.vm_mem }}
+      vm_cpus: ${{ inputs.vm_cpus }}
+      disk_size: ${{ inputs.disk_size }}
+      timeout_minutes: ${{ inputs.timeout_minutes }}
+      debug_shell: ${{ inputs.debug_shell }}

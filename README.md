@@ -10,7 +10,8 @@ can run them too.
 
 | Workflow | Description |
 |---|---|
-| [`test-on-qemu.yml`](docs/test-on-qemu.md) | Boots a Rocky 9 or Debian guest under KVM on the runner, installs the core, creates a single-node cluster and runs the module's test suite against it. Needs no infrastructure and no secret. |
+| [`test-module.yml`](docs/test-module.md) | What a module should call. Drop-in replacement for the wrapper of the same name in `ns8-github-actions`: gathers the module information, decides whether the UI tests are worth running, and fans out over distributions and scenarios. |
+| [`test-on-qemu.yml`](docs/test-on-qemu.md) | One leg. Boots a Rocky 9 or Debian guest under KVM on the runner, installs the core, creates a single-node cluster and runs the module's test suite against it. Needs no infrastructure and no secret. |
 
 ## What a module must provide
 
@@ -65,8 +66,10 @@ request of the ref under test.
 
 That comment needs a token allowed to write pull requests, and a called
 workflow cannot ask for more than its caller holds, so the calling job grants
-it. [The workflow documentation](docs/test-on-qemu.md#interface-screenshots)
-carries the caller file to copy, with and without the screenshots.
+it. [The wrapper documentation](docs/test-module.md#the-pull-request-comment-and-its-token)
+says why the grant sits on the job rather than on the repository, and
+[the workflow documentation](docs/test-on-qemu.md#interface-screenshots) carries
+the caller file to copy, with and without the screenshots.
 
 ## Versioning
 
