@@ -68,12 +68,12 @@ on:
         required: false
         type: string
         default: ns8-stable
-        description: "Branch or tag of ns8-core to install from"
+        description: "git ref of ns8-core, deciding which install.sh is downloaded"
       install_args:
         required: false
         type: string
         default: ""
-        description: "Extra arguments for install.sh: a core image to replace ns8-stable, module URLs, or both"
+        description: "Arguments for that install.sh. A core image here replaces the ns8-stable it hardcodes; anything else is a module to install alongside. Testing a dev core needs both, since corebranch alone still installs ns8-stable"
       cloud_image_url:
         required: false
         type: string
