@@ -42,6 +42,16 @@ on:
         type: string
         default: ""
         description: "Extra arguments forwarded to robot, such as `-v SCENARIO:update`"
+      artifact_suffix:
+        required: false
+        type: string
+        default: ""
+        description: "Extra segment appended to the test-outputs artifact name and shown next to the guest in the job summary. A caller matrixing on more than distro, such as a scenario, sets it, or two legs upload same-named artifacts and their summaries read identically"
+      update_from:
+        required: false
+        type: string
+        default: ""
+        description: "Baseline image an update scenario starts from, shown in the job summary. Purely informational: robot still receives it through `args`, this does not act on anything by itself"
       ci_actions_ref:
         required: false
         type: string
@@ -288,7 +298,8 @@ jobs:
             echo "|---|---|"
             echo "| image | \`${IMAGE_URL}\` |"
             [ -n "${digest}" ] && echo "| digest | \`${digest}\` |"
-            echo "| guest | ${{ inputs.distro }} |"
+            echo "| guest | ${{ inputs.distro }}${{ inputs.artifact_suffix != '' && format(' ({0})', inputs.artifact_suffix) || '' }} |"
+            [ -n "${{ inputs.update_from }}" ] && echo "| update from | \`${{ inputs.update_from }}\` |"
           } >> "${GITHUB_STEP_SUMMARY}"
           echo "IMAGE_DIGEST=${digest}" >> "${GITHUB_ENV}"
 
@@ -618,7 +629,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: test-outputs-${{ inputs.distro }}-${{ env.REF_SLUG }}
+          name: test-outputs-${{ inputs.distro }}${{ inputs.artifact_suffix != '' && format('-{0}', inputs.artifact_suffix) || '' }}-${{ env.REF_SLUG }}
           path: ${{ github.workspace }}/${{ inputs.path }}/tests/outputs
           if-no-files-found: warn
           retention-days: 14

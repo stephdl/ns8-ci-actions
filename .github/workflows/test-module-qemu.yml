@@ -1,20 +1,11 @@
 name: "Test module on QEMU"
 
 # Drop-in replacement for NethServer/ns8-github-actions/.github/workflows/test-module.yml,
-# running on a throwaway QEMU node instead of a DigitalOcean droplet. A module
-# swaps the whole path in its `uses:` line and keeps the rest.
-#
-# The name says QEMU rather than matching the file it replaces: both could end
-# up in the same repository one day, and two .github/workflows/test-module.yml
-# cannot.
-#
-# The DigitalOcean wrapper picks two nodes from a pool and alternates them; here
-# the distro is a matrix dimension, so the same coverage comes from the matrix.
+# on a throwaway QEMU node instead of a DigitalOcean droplet. See docs/test-module-qemu.md.
 
 on:
   workflow_call:
     inputs:
-      # --- Identical to the Nethesis wrapper -------------------------------
       ui_tests_strategy:
         required: false
         type: string
@@ -26,7 +17,6 @@ on:
         default: false
         description: "Debug shell"
 
-      # --- What the module under test is ----------------------------------
       image_name:
         required: false
         type: string
@@ -48,7 +38,6 @@ on:
         default: v1
         description: "Ref this repository is read at for the shared test runner. Pass the same ref as `uses:` when testing a branch of ns8-ci-actions"
 
-      # --- What to cover --------------------------------------------------
       distros:
         required: false
         type: string
@@ -57,8 +46,8 @@ on:
       scenarios:
         required: false
         type: string
-        default: '["install","update"]'
-        description: "JSON array of scenarios. `install` tests the image on a clean node, `update` installs a baseline first and upgrades to it. A suite that ignores $SCENARIO should ask for install alone"
+        default: '["install"]'
+        description: "JSON array of scenarios. `install` tests the image on a clean node, `update` installs a baseline first and upgrades to it. Robot Framework does not error on an unused -v, so a suite that ignores $SCENARIO would silently run install twice under `update` rather than fail: opt in explicitly with `[\"install\",\"update\"]` once the suite handles it"
       update_from:
         required: false
         type: string
@@ -75,7 +64,6 @@ on:
         default: install
         description: "Publish screenshots from this scenario only"
 
-      # --- Guest and runner sizing ----------------------------------------
       corebranch:
         required: false
         type: string
@@ -124,9 +112,8 @@ jobs:
       head_sha: ${{ github.event.workflow_run.head_sha || github.sha }}
       head_branch: ${{ github.event.workflow_run.head_branch || github.ref_name }}
 
-  # The update scenario needs a version to start from. A core module gets it from
-  # install.sh, which seeds the stable core; an app module is installed by its own
-  # suite, so the baseline has to be named here.
+  # An app module is installed by its own suite, so the baseline it upgrades
+  # from has to be named here rather than seeded by install.sh.
   baseline:
     if: ${{ contains(fromJSON(inputs.scenarios), 'update') }}
     needs: module
@@ -144,9 +131,8 @@ jobs:
           if [ -n "${EXPLICIT_TAG}" ]; then
             tag="${EXPLICIT_TAG}"
           else
-            # A prerelease is not what a user upgrades from, so skip it. No
-            # release at all means the module never shipped: main is the only
-            # baseline there is.
+            # No release at all means the module never shipped: latest is the
+            # only baseline there is.
             tag=$(gh release list --repo "${{ github.repository }}" \
                     --exclude-pre-releases --exclude-drafts \
                     --limit 1 --json tagName --jq '.[0].tagName' 2>/dev/null || true)
@@ -157,9 +143,8 @@ jobs:
 
   test:
     needs: [module, check_ui_tests_needed, baseline]
-    # baseline is skipped when no update leg was asked for, and a skipped need
-    # would otherwise skip this job too. It must not have failed, though: an
-    # unresolved baseline would reach robot as an empty -v UPDATE_FROM:.
+    # baseline is legitimately skipped absent an update leg, but not failed:
+    # that would reach robot as an empty -v UPDATE_FROM:.
     if: ${{ always()
             && needs.module.result == 'success'
             && needs.check_ui_tests_needed.result == 'success'
@@ -168,9 +153,8 @@ jobs:
     concurrency:
       group: ${{ github.workflow }}-${{ github.event.workflow_run.head_branch || github.ref }}-${{ matrix.distro }}-${{ matrix.scenario }}
       cancel-in-progress: true
-    # The screenshots are published as a comment, and a called workflow cannot
-    # hold more than its caller: the permission is granted by the module's own
-    # caller job, not here.
+    # Granted here because test-on-qemu.yml, called below, cannot hold more
+    # than this job does.
     permissions:
       contents: read
       pull-requests: write
@@ -191,6 +175,9 @@ jobs:
       args: >-
         -v SCENARIO:${{ matrix.scenario }}
         ${{ matrix.scenario == 'update' && format('-v UPDATE_FROM:{0}', needs.baseline.outputs.image) || '' }}
+      # distro alone no longer names a leg uniquely, since scenario is a second matrix dimension.
+      artifact_suffix: ${{ matrix.scenario }}
+      update_from: ${{ matrix.scenario == 'update' && needs.baseline.outputs.image || '' }}
       run_ui_tests: ${{ matrix.distro == inputs.ui_test_distro
                         && matrix.scenario == inputs.ui_test_scenario
                         && needs.check_ui_tests_needed.outputs.ui_tests_needed == 'true' }}

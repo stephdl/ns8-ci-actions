@@ -188,6 +188,10 @@ the dev script, which then installs stable anyway.
 | `version_tag` | branch under test | names the artifact. `workflow_run` callers must pass it, their context points at the default branch |
 | `script` | `test-module.sh` | test entry point. Empty selects `scripts/test-module.sh` of this repository, and the module ships none |
 | `path` | | subdirectory holding the module, when it is not at the repository root |
+| `ci_actions_ref` | `v1` | ref this repository is read at for the shared runner, when `script` is empty. Testing a branch of `ns8-ci-actions` means naming it here too, since a reusable workflow is handed no context saying which ref called it |
+| `args` | | extra arguments forwarded to robot, such as `-v SCENARIO:update` |
+| `artifact_suffix` | | extra segment in the `test-outputs` artifact name and next to `guest` in the job summary. A caller matrixing on more than `distro` sets it, or two legs produce a same-named artifact and summaries that read identically |
+| `update_from` | | baseline image an update scenario started from, shown in the job summary. Purely informational, robot still gets it through `args` |
 | `run_ui_tests` | `false` | reaches the script as `RUN_UI_TESTS`, and publishes the images of `tests/outputs/` on the pull request. See [Interface screenshots](#interface-screenshots) |
 
 ### The machine

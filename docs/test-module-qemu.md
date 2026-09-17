@@ -64,7 +64,7 @@ What to cover:
 | Input | Default | Description |
 |---|---|---|
 | `distros` | `["rocky9","debian13"]` | JSON array of guest distributions |
-| `scenarios` | `["install","update"]` | JSON array. See [Scenarios](#scenarios) |
+| `scenarios` | `["install"]` | JSON array. See [Scenarios](#scenarios) |
 | `update_from` | _(resolved)_ | Tag the update scenario starts from. Empty takes the newest non-prerelease release, then falls back to `latest` |
 | `ui_test_distro` | `rocky9` | Publish screenshots from this leg only |
 | `ui_test_scenario` | `install` | Publish screenshots from this scenario only |
@@ -72,8 +72,8 @@ What to cover:
 Guest and runner sizing, all forwarded to `test-on-qemu.yml` unchanged:
 `corebranch`, `runs_on`, `vm_mem`, `vm_cpus`, `disk_size`, `timeout_minutes`.
 
-`distros` and `scenarios` multiply: the defaults are four legs. A module whose
-suite ignores `$SCENARIO` should ask for `'["install"]'` and halve that.
+`distros` and `scenarios` multiply, so pass `scenarios: '["install","update"]'`
+only once the suite is ready for it: see [Scenarios](#scenarios) for why.
 
 ## Scenarios
 
@@ -83,9 +83,16 @@ against the upgraded module. It catches what a clean install cannot: a
 configuration that a migration drops, an `update-module` that fails, a volume or
 a secret that does not survive the version change.
 
+`update` is opt-in, disabled by default. Robot Framework does not fail on an
+unused `-v`: a suite that never reads `$SCENARIO` would not error, it would run
+the exact install path twice under a different label, doubling the CI cost for
+no extra coverage and no visible sign that it happened. Ask for
+`scenarios: '["install","update"]'` only once `tests/` has an
+`IF '${SCENARIO}' == 'update'` branch to act on it, following the example
+below.
+
 The scenario reaches the suite as `-v SCENARIO:install|update`, and the update
-leg also gets `-v UPDATE_FROM:<image>`. A suite that ignores both still runs, so
-adopting the wrapper does not require touching `tests/` first.
+leg also gets `-v UPDATE_FROM:<image>`.
 
 `ns8-github-actions` needs no `UPDATE_FROM` because its update leg tests core
 modules, which `install.sh` seeds at the stable version. An app module is
