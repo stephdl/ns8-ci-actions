@@ -1,5 +1,10 @@
 # test-on-qemu.yml
 
+One leg: one distro, one scenario. Most modules should call
+[`test-module-qemu.yml`](test-module-qemu.md) instead, which runs several of
+these for you. Read this file to call a leg directly, or to look up what an
+input does.
+
 Boots a cloud image under KVM on the runner, installs the NS8 core, creates a
 single-node cluster and runs the module's own test suite against it.
 
@@ -42,6 +47,8 @@ jobs:
       image_url: ${{ needs.module.outputs.image }}
       repo_ref: ${{ needs.module.outputs.sha }}
       version_tag: ${{ needs.module.outputs.tag }}
+      # vm_mem: 8192                   # guest memory, MiB. 12288 is the ceiling
+      # disk_size: 30G                 # guest disk after resize
 ```
 
 That file is the whole of it. The suite runs in a slim Python image, the cases
@@ -88,6 +95,10 @@ lines carry prose, not keys: delete them rather than uncomment them.
       # --- the module under test
       # script: test-module.sh         # test entry point in the caller repository
       # path: ""                       # subdirectory, when the module is not at the root
+      # ci_actions_ref: v1             # ref this repository is read at, when script is empty
+      # args: ""                       # extra arguments forwarded to robot
+      # artifact_suffix: ""            # extra segment naming a leg beyond distro
+      # update_from: ""                # baseline an update scenario started from, for the summary
       # --- the machine
       # runs_on: ubuntu-24.04          # must provide /dev/kvm
       # vm_mem: 8192                   # guest memory, MiB. 12288 is the ceiling
@@ -188,6 +199,10 @@ the dev script, which then installs stable anyway.
 | `version_tag` | branch under test | names the artifact. `workflow_run` callers must pass it, their context points at the default branch |
 | `script` | `test-module.sh` | test entry point. Empty selects `scripts/test-module.sh` of this repository, and the module ships none |
 | `path` | | subdirectory holding the module, when it is not at the repository root |
+| `ci_actions_ref` | `v1` | ref this repository is read at for the shared runner, when `script` is empty. Testing a branch of `ns8-ci-actions` means naming it here too, since a reusable workflow is handed no context saying which ref called it |
+| `args` | | extra arguments forwarded to robot, such as `-v SCENARIO:update` |
+| `artifact_suffix` | | extra segment in the `test-outputs` artifact name and next to `guest` in the job summary. A caller matrixing on more than `distro` sets it, or two legs produce a same-named artifact and summaries that read identically |
+| `update_from` | | baseline image an update scenario started from, shown in the job summary. Purely informational, robot still gets it through `args` |
 | `run_ui_tests` | `false` | reaches the script as `RUN_UI_TESTS`, and publishes the images of `tests/outputs/` on the pull request. See [Interface screenshots](#interface-screenshots) |
 
 ### The machine
@@ -239,11 +254,13 @@ base stays exactly what the checksum says.
 
 The image is tagged with the branch under test, so `add-module` in the Robot log
 reads `192.168.77.1:5000/pihole:feat-8678` rather than an anonymous tag, and the
-run summary names it. The artifact carries the same slug:
+run summary names it. The artifact carries the same slug, plus `artifact_suffix`
+when the caller matrixes on more than `distro`:
 
 ```
 test-outputs-debian13-feat-8678
 test-outputs-rocky9-feat-8678
+test-outputs-rocky9-update-feat-8678
 ```
 
 `diag/module-version.txt` inside it records the image URL, the digests podman
@@ -275,6 +292,10 @@ GitHub has no public API to attach an image to a comment, so the step uses
 links.
 
 ### The caller, with screenshots
+
+[`test-module-qemu.yml`](test-module-qemu.md) makes this decision for you, as
+`ui_tests_strategy: on_renovate_ui_change`, and stays in sync with upstream if
+that rule ever changes. Hand-roll it only for a condition it cannot express.
 
 The same file as above, with a job deciding whether the images are worth taking
 and the permission the comment needs. Screenshots read well on a dependency bump
@@ -336,6 +357,7 @@ jobs:
       image_url: ${{ needs.module.outputs.image }}
       repo_ref: ${{ needs.module.outputs.sha }}
       version_tag: ${{ needs.module.outputs.tag }}
+      # The shared runner: it already knows RUN_UI_TESTS, a module's own script might not
       script: ""
       # One leg only: every leg carrying the flag comments, so a matrix would
       # post the same images twice

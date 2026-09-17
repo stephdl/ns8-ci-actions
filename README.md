@@ -10,7 +10,8 @@ can run them too.
 
 | Workflow | Description |
 |---|---|
-| [`test-on-qemu.yml`](docs/test-on-qemu.md) | Boots a Rocky 9 or Debian guest under KVM on the runner, installs the core, creates a single-node cluster and runs the module's test suite against it. Needs no infrastructure and no secret. |
+| [`test-module-qemu.yml`](docs/test-module-qemu.md) | What a module should call. Drop-in replacement for `test-module.yml` of `ns8-github-actions`: gathers the module information, decides whether the UI tests are worth running, and fans out over distributions and scenarios. |
+| [`test-on-qemu.yml`](docs/test-on-qemu.md) | One leg. Boots a Rocky 9 or Debian guest under KVM on the runner, installs the core, creates a single-node cluster and runs the module's test suite against it. Needs no infrastructure and no secret. |
 
 ## What a module must provide
 
@@ -32,6 +33,10 @@ No secret is needed.
 `scripts/test-module.sh` runs the `tests/` directory of a module inside a
 Podman container, against a live NS8 cluster.
 
+It is vendored verbatim from `NethServer/ns8-github-actions@v1`, so a suite sees
+the same runner whether it is tested on DigitalOcean or on the QEMU node.
+Re-sync it rather than patching it here.
+
 A module calling `test-on-qemu.yml` with `script: ""` uses this copy and can
 **delete its own `test-module.sh`**: one less file to keep in step with the
 others. The default keeps the module's script, so nothing moves under the
@@ -52,7 +57,7 @@ run-ns8-tests <LEADER_NODE> <IMAGE_URL> [robot options...]
 
 | Variable | Default | Description |
 |---|---|---|
-| `SSH_KEYFILE` | `~/.ssh/id_rsa` | Private key that reaches the leader node |
+| `SSH_KEYFILE` | `~/.ssh/id_ecdsa` | Private key that reaches the leader node |
 | `RUN_UI_TESTS` | _(unset)_ | `true` runs the cases tagged `ui`, in the Playwright image. Anything else excludes them and uses a slim Python image |
 
 The workflow sets `RUN_UI_TESTS` from its own `run_ui_tests` input, and
@@ -61,8 +66,10 @@ request of the ref under test.
 
 That comment needs a token allowed to write pull requests, and a called
 workflow cannot ask for more than its caller holds, so the calling job grants
-it. [The workflow documentation](docs/test-on-qemu.md#interface-screenshots)
-carries the caller file to copy, with and without the screenshots.
+it. [The wrapper documentation](docs/test-module-qemu.md#the-pull-request-comment-and-its-token)
+says why the grant sits on the job rather than on the repository, and
+[the workflow documentation](docs/test-on-qemu.md#interface-screenshots) carries
+the caller file to copy, with and without the screenshots.
 
 ## Versioning
 

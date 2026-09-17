@@ -27,16 +27,36 @@ on:
         required: false
         type: string
         default: ns8-stable
-        description: "Branch or tag of ns8-core to install from"
+        description: "git ref of ns8-core, deciding which install.sh is downloaded"
       install_args:
         required: false
         type: string
         default: ""
-        description: "Extra arguments for install.sh: a core image to replace ns8-stable, module URLs, or both"
+        description: "Arguments for that install.sh. A core image here replaces the ns8-stable it hardcodes; anything else is a module to install alongside"
       image_url:
         required: true
         type: string
         description: "Module image to test, published and reachable from the guest"
+      args:
+        required: false
+        type: string
+        default: ""
+        description: "Extra arguments forwarded to robot, such as `-v SCENARIO:update`"
+      artifact_suffix:
+        required: false
+        type: string
+        default: ""
+        description: "Extra segment appended to the test-outputs artifact name and shown next to the guest in the job summary. A caller matrixing on more than distro, such as a scenario, sets it, or two legs upload same-named artifacts and their summaries read identically"
+      update_from:
+        required: false
+        type: string
+        default: ""
+        description: "Baseline image an update scenario starts from, shown in the job summary. Purely informational: robot still receives it through `args`, this does not act on anything by itself"
+      ci_actions_ref:
+        required: false
+        type: string
+        default: v1
+        description: "Ref this repository is read at for the shared test runner. A reusable workflow is handed no context naming the ref it was called at, so testing a branch of ns8-ci-actions means naming it here too"
       script:
         required: false
         type: string
@@ -118,7 +138,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           repository: stephdl/ns8-ci-actions
-          ref: v1
+          ref: ${{ inputs.ci_actions_ref }}
           path: .ci-actions
 
       - name: Derive the version tag
@@ -254,6 +274,9 @@ jobs:
       - name: Describe the image under test
         env:
           IMAGE_URL: ${{ inputs.image_url }}
+          DISTRO: ${{ inputs.distro }}
+          ARTIFACT_SUFFIX: ${{ inputs.artifact_suffix }}
+          UPDATE_FROM: ${{ inputs.update_from }}
         run: |
           set -uo pipefail
           echo "IMAGE_URL=${IMAGE_URL}" >> "${GITHUB_ENV}"
@@ -271,6 +294,13 @@ jobs:
             exit 1
           fi
           digest=$(printf '%s' "${raw}" | jq -r '.Digest // empty')
+          # Through env, not spliced in: a value with shell syntax would run.
+          guest="${DISTRO}"
+          artifact_name_suffix=""
+          if [ -n "${ARTIFACT_SUFFIX}" ]; then
+            guest="${guest} (${ARTIFACT_SUFFIX})"
+            artifact_name_suffix="-${ARTIFACT_SUFFIX}"
+          fi
           {
             echo "### Module image"
             echo
@@ -278,9 +308,11 @@ jobs:
             echo "|---|---|"
             echo "| image | \`${IMAGE_URL}\` |"
             [ -n "${digest}" ] && echo "| digest | \`${digest}\` |"
-            echo "| guest | ${{ inputs.distro }} |"
+            echo "| guest | ${guest} |"
+            [ -n "${UPDATE_FROM}" ] && echo "| update from | \`${UPDATE_FROM}\` |"
           } >> "${GITHUB_STEP_SUMMARY}"
           echo "IMAGE_DIGEST=${digest}" >> "${GITHUB_ENV}"
+          echo "ARTIFACT_NAME_SUFFIX=${artifact_name_suffix}" >> "${GITHUB_ENV}"
 
       - name: Build the cloud-init seed
         run: |
@@ -565,6 +597,7 @@ jobs:
         working-directory: ${{ github.workspace }}/${{ inputs.path }}
         env:
           RUN_UI_TESTS: ${{ inputs.run_ui_tests }}
+          ARGS: ${{ inputs.args }}
         run: |
           set -o pipefail
           if [ -n "${{ inputs.script }}" ]; then
@@ -572,7 +605,8 @@ jobs:
           else
             script_path="${{ github.workspace }}/.ci-actions/scripts/test-module.sh"
           fi
-          bash "$script_path" "${VM_IP}" "${IMAGE_URL}"
+          # ARGS stays unquoted: it carries several words that robot parses itself.
+          bash "$script_path" "${VM_IP}" "${IMAGE_URL}" ${ARGS}
 
       - name: Collect diagnostics
         if: always()
@@ -606,7 +640,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: test-outputs-${{ inputs.distro }}-${{ env.REF_SLUG }}
+          name: test-outputs-${{ inputs.distro }}${{ env.ARTIFACT_NAME_SUFFIX }}-${{ env.REF_SLUG }}
           path: ${{ github.workspace }}/${{ inputs.path }}/tests/outputs
           if-no-files-found: warn
           retention-days: 14
