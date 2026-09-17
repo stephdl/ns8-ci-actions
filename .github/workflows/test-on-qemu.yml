@@ -37,6 +37,11 @@ on:
         required: true
         type: string
         description: "Module image to test, published and reachable from the guest"
+      args:
+        required: false
+        type: string
+        default: ""
+        description: "Extra arguments forwarded to robot, such as `-v SCENARIO:update`"
       script:
         required: false
         type: string
@@ -565,6 +570,7 @@ jobs:
         working-directory: ${{ github.workspace }}/${{ inputs.path }}
         env:
           RUN_UI_TESTS: ${{ inputs.run_ui_tests }}
+          ARGS: ${{ inputs.args }}
         run: |
           set -o pipefail
           if [ -n "${{ inputs.script }}" ]; then
@@ -572,7 +578,8 @@ jobs:
           else
             script_path="${{ github.workspace }}/.ci-actions/scripts/test-module.sh"
           fi
-          bash "$script_path" "${VM_IP}" "${IMAGE_URL}"
+          # ARGS stays unquoted: it carries several words that robot parses itself.
+          bash "$script_path" "${VM_IP}" "${IMAGE_URL}" ${ARGS}
 
       - name: Collect diagnostics
         if: always()
