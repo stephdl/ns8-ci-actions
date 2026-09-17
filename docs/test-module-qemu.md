@@ -70,7 +70,9 @@ What to cover:
 | `ui_test_scenario` | `install` | Publish screenshots from this scenario only |
 
 Guest and runner sizing, all forwarded to `test-on-qemu.yml` unchanged:
-`corebranch`, `runs_on`, `vm_mem`, `vm_cpus`, `disk_size`, `timeout_minutes`.
+`corebranch`, `install_args`, `cloud_image_url`, `runs_on`, `vm_mem`,
+`vm_cpus`, `disk_size`, `timeout_minutes`. See
+[its own documentation](test-on-qemu.md#inputs) for what each one does.
 
 `distros` and `scenarios` multiply, so pass `scenarios: '["install","update"]'`
 only once the suite is ready for it: see [Scenarios](#scenarios) for why.

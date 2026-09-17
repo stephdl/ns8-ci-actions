@@ -69,6 +69,16 @@ on:
         type: string
         default: ns8-stable
         description: "Branch or tag of ns8-core to install from"
+      install_args:
+        required: false
+        type: string
+        default: ""
+        description: "Extra arguments for install.sh: a core image to replace ns8-stable, module URLs, or both"
+      cloud_image_url:
+        required: false
+        type: string
+        default: ""
+        description: "Cloud image URL, overriding the one `distros` implies"
       runs_on:
         required: false
         type: string
@@ -182,6 +192,8 @@ jobs:
                         && matrix.scenario == inputs.ui_test_scenario
                         && needs.check_ui_tests_needed.outputs.ui_tests_needed == 'true' }}
       corebranch: ${{ inputs.corebranch }}
+      install_args: ${{ inputs.install_args }}
+      cloud_image_url: ${{ inputs.cloud_image_url }}
       runs_on: ${{ inputs.runs_on }}
       vm_mem: ${{ inputs.vm_mem }}
       vm_cpus: ${{ inputs.vm_cpus }}
