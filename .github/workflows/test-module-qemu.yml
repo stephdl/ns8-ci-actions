@@ -1,8 +1,12 @@
-name: "Test module"
+name: "Test module on QEMU"
 
 # Drop-in replacement for NethServer/ns8-github-actions/.github/workflows/test-module.yml,
 # running on a throwaway QEMU node instead of a DigitalOcean droplet. A module
-# swaps the owner and repository in its `uses:` line and keeps the rest.
+# swaps the whole path in its `uses:` line and keeps the rest.
+#
+# The name says QEMU rather than matching the file it replaces: both could end
+# up in the same repository one day, and two .github/workflows/test-module.yml
+# cannot.
 #
 # The DigitalOcean wrapper picks two nodes from a pool and alternates them; here
 # the distro is a matrix dimension, so the same coverage comes from the matrix.

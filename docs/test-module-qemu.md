@@ -1,8 +1,10 @@
-# test-module.yml
+# test-module-qemu.yml
 
 Drop-in replacement for
 [`NethServer/ns8-github-actions/.github/workflows/test-module.yml`](https://github.com/NethServer/ns8-github-actions/blob/v1/.github/workflows/test-module.yml),
-running on a throwaway QEMU node instead of a DigitalOcean droplet.
+running on a throwaway QEMU node instead of a DigitalOcean droplet. The name
+says QEMU rather than matching the file it replaces: both could end up in the
+same repository one day, and two `.github/workflows/test-module.yml` cannot.
 
 It is the wrapper a module should call. It gathers the module information,
 decides whether the UI tests are worth running, resolves the baseline for the
@@ -18,9 +20,8 @@ when you need a single leg under your own conditions.
 
 ## Moving a module off DigitalOcean
 
-Change the owner and repository in `uses:`, and drop the `secrets:` block. The
-secret is still accepted, and ignored, so a caller that keeps it works
-unchanged.
+Change the path in `uses:`, and drop the `secrets:` block. The secret is still
+accepted, and ignored, so a caller that keeps it works unchanged.
 
 ```diff
  jobs:
@@ -30,7 +31,7 @@ unchanged.
 +      contents: read
 +      pull-requests: write
 -    uses: NethServer/ns8-github-actions/.github/workflows/test-module.yml@v1
-+    uses: stephdl/ns8-ci-actions/.github/workflows/test-module.yml@v1
++    uses: stephdl/ns8-ci-actions/.github/workflows/test-module-qemu.yml@v1
      with:
        ui_tests_strategy: on_renovate_ui_change
        debug_shell: ${{ github.event.inputs.debug_shell == 'true' }}
