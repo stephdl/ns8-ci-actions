@@ -58,6 +58,7 @@ What the module under test is:
 | `image_name` | _(derived)_ | Only when `reponame` in `build-images.sh` differs from the repository name minus its `ns8-` prefix. Empty derives it, which is right for most modules |
 | `path` | `""` | Subdirectory holding the module |
 | `script` | `""` | Empty runs the shared `scripts/test-module.sh`, which is what a module should want |
+| `ci_actions_ref` | `v1` | Ref this repository is read at for that shared runner. Pass the same ref as `uses:` when testing a branch of `ns8-ci-actions` |
 
 What to cover:
 
