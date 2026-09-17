@@ -130,6 +130,36 @@ Check the module survives the update
 Configure the module before the update and read the configuration back after
 it. That comparison is the coverage the update leg buys.
 
+### Not yet supported: a module bundled into the core
+
+The pattern above is for an app module that installs itself, `add-module`
+inside its own suite. `NethServer/ns8-metrics` is shaped differently: `metrics1`
+ships as part of the core, under a fixed instance name, with no `add-module`
+call anywhere in its suite. Its `install` scenario instead needs the image
+under test injected while the core itself is installed:
+
+```yaml
+# NethServer/ns8-github-actions, scenario-conditional
+coremodules: ${{ matrix.scenario == 'install' && format('ghcr.io/{0}/{1}:{2}', owner, name, tag) || '' }}
+```
+
+`install_args` here forwards straight into `install.sh` the same way, but as
+one static string for every leg, not conditional on `scenario`. Passing the
+image under test through it would make the `install` leg correct and the
+`update` leg a no-op: `metrics1` would already be running that image before
+`update-module` runs, upgrading it to itself. Leaving it empty makes `install`
+test the stock core version instead of the image under test.
+
+Fixing this needs a second input, `install_args_update`, and the same ternary
+`args` and `update_from` already use:
+
+```yaml
+install_args: ${{ matrix.scenario == 'update' && inputs.install_args_update || inputs.install_args }}
+```
+
+Not implemented: no module in this repository's own CI needs it yet, and it
+can only be exercised against a real bundled-core module, which none here are.
+
 ## The pull request comment and its token
 
 The screenshots are uploaded by `cml` and posted as a comment, which needs a
