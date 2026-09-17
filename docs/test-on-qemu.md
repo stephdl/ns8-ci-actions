@@ -1,5 +1,10 @@
 # test-on-qemu.yml
 
+One leg: one distro, one scenario. Most modules should call
+[`test-module-qemu.yml`](test-module-qemu.md) instead, which runs several of
+these for you. Read this file to call a leg directly, or to look up what an
+input does.
+
 Boots a cloud image under KVM on the runner, installs the NS8 core, creates a
 single-node cluster and runs the module's own test suite against it.
 

@@ -1,16 +1,16 @@
 # test-module-qemu.yml
 
+What a module should call: it gathers the module information, decides whether
+the UI tests are worth running, resolves the baseline for the update scenario,
+and fans out over distributions and scenarios, calling
+[`test-on-qemu.yml`](test-on-qemu.md) once per leg. Call that one directly only
+when you need a single leg under your own conditions.
+
 Drop-in replacement for
 [`NethServer/ns8-github-actions/.github/workflows/test-module.yml`](https://github.com/NethServer/ns8-github-actions/blob/v1/.github/workflows/test-module.yml),
 running on a throwaway QEMU node instead of a DigitalOcean droplet. The name
 says QEMU rather than matching the file it replaces: both could end up in the
 same repository one day, and two `.github/workflows/test-module.yml` cannot.
-
-It is the wrapper a module should call. It gathers the module information,
-decides whether the UI tests are worth running, resolves the baseline for the
-update scenario, and fans out over distributions and scenarios, calling
-[`test-on-qemu.yml`](test-on-qemu.md) for each leg. Call that one directly only
-when you need a single leg under your own conditions.
 
 - [Moving a module off DigitalOcean](#moving-a-module-off-digitalocean)
 - [Inputs](#inputs)
