@@ -274,6 +274,9 @@ jobs:
       - name: Describe the image under test
         env:
           IMAGE_URL: ${{ inputs.image_url }}
+          DISTRO: ${{ inputs.distro }}
+          ARTIFACT_SUFFIX: ${{ inputs.artifact_suffix }}
+          UPDATE_FROM: ${{ inputs.update_from }}
         run: |
           set -uo pipefail
           echo "IMAGE_URL=${IMAGE_URL}" >> "${GITHUB_ENV}"
@@ -291,6 +294,13 @@ jobs:
             exit 1
           fi
           digest=$(printf '%s' "${raw}" | jq -r '.Digest // empty')
+          # Through env, not spliced in: a value with shell syntax would run.
+          guest="${DISTRO}"
+          artifact_name_suffix=""
+          if [ -n "${ARTIFACT_SUFFIX}" ]; then
+            guest="${guest} (${ARTIFACT_SUFFIX})"
+            artifact_name_suffix="-${ARTIFACT_SUFFIX}"
+          fi
           {
             echo "### Module image"
             echo
@@ -298,10 +308,11 @@ jobs:
             echo "|---|---|"
             echo "| image | \`${IMAGE_URL}\` |"
             [ -n "${digest}" ] && echo "| digest | \`${digest}\` |"
-            echo "| guest | ${{ inputs.distro }}${{ inputs.artifact_suffix != '' && format(' ({0})', inputs.artifact_suffix) || '' }} |"
-            [ -n "${{ inputs.update_from }}" ] && echo "| update from | \`${{ inputs.update_from }}\` |"
+            echo "| guest | ${guest} |"
+            [ -n "${UPDATE_FROM}" ] && echo "| update from | \`${UPDATE_FROM}\` |"
           } >> "${GITHUB_STEP_SUMMARY}"
           echo "IMAGE_DIGEST=${digest}" >> "${GITHUB_ENV}"
+          echo "ARTIFACT_NAME_SUFFIX=${artifact_name_suffix}" >> "${GITHUB_ENV}"
 
       - name: Build the cloud-init seed
         run: |
@@ -629,7 +640,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: test-outputs-${{ inputs.distro }}${{ inputs.artifact_suffix != '' && format('-{0}', inputs.artifact_suffix) || '' }}-${{ env.REF_SLUG }}
+          name: test-outputs-${{ inputs.distro }}${{ env.ARTIFACT_NAME_SUFFIX }}-${{ env.REF_SLUG }}
           path: ${{ github.workspace }}/${{ inputs.path }}/tests/outputs
           if-no-files-found: warn
           retention-days: 14

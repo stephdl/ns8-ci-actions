@@ -42,6 +42,8 @@ jobs:
       image_url: ${{ needs.module.outputs.image }}
       repo_ref: ${{ needs.module.outputs.sha }}
       version_tag: ${{ needs.module.outputs.tag }}
+      # vm_mem: 8192                   # guest memory, MiB. 12288 is the ceiling
+      # disk_size: 30G                 # guest disk after resize
 ```
 
 That file is the whole of it. The suite runs in a slim Python image, the cases
@@ -279,6 +281,10 @@ GitHub has no public API to attach an image to a comment, so the step uses
 links.
 
 ### The caller, with screenshots
+
+[`test-module-qemu.yml`](test-module-qemu.md) makes this decision for you, as
+`ui_tests_strategy: on_renovate_ui_change`, and stays in sync with upstream if
+that rule ever changes. Hand-roll it only for a condition it cannot express.
 
 The same file as above, with a job deciding whether the images are worth taking
 and the permission the comment needs. Screenshots read well on a dependency bump

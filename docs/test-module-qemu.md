@@ -64,7 +64,7 @@ What to cover:
 
 | Input | Default | Description |
 |---|---|---|
-| `distros` | `["rocky9","debian13"]` | JSON array of guest distributions |
+| `distros` | `["rocky9","debian13"]` | JSON array of guest distributions. `debian12` is also supported |
 | `scenarios` | `["install"]` | JSON array. See [Scenarios](#scenarios) |
 | `update_from` | _(resolved)_ | Tag the update scenario starts from. Empty takes the newest non-prerelease release, then falls back to `latest` |
 | `ui_test_distro` | `rocky9` | Publish screenshots from this leg only |
@@ -143,12 +143,13 @@ jobs:
       pull-requests: write
 ```
 
-`NethServer/ns8-roundcubemail` declares nothing because its repository default
-workflow permission is `write`. That also hands a read/write token to every
-other workflow in the repository, next to a `workflow_run` chain that checks out
-and runs the code of a pull request. Granting it on the one job that needs it is
-narrower, and it is why this wrapper asks for the three lines instead of asking
-you to change a repository setting.
+A NethServer module caller can skip this block when its repository default
+workflow permission is `write`, since every job then already holds it. That
+also hands a read/write token to every other workflow in the repository, next
+to a `workflow_run` chain that checks out and runs the code of a pull request.
+Granting it on the one job that needs it is narrower, and it is why this
+wrapper asks for the three lines instead of asking you to change a repository
+setting.
 
 Without the grant the job still passes: the step skips rather than failing.
 
