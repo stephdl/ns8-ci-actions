@@ -38,6 +38,11 @@ on:
         type: string
         default: ""
         description: "Test script to run, relative to `path`. Empty selects the shared scripts/test-module.sh, which is what a module should want"
+      ci_actions_ref:
+        required: false
+        type: string
+        default: v1
+        description: "Ref this repository is read at for the shared test runner. Pass the same ref as `uses:` when testing a branch of ns8-ci-actions"
 
       # --- What to cover --------------------------------------------------
       distros:
@@ -178,6 +183,7 @@ jobs:
       version_tag: ${{ needs.module.outputs.tag }}
       path: ${{ inputs.path }}
       script: ${{ inputs.script }}
+      ci_actions_ref: ${{ inputs.ci_actions_ref }}
       args: >-
         -v SCENARIO:${{ matrix.scenario }}
         ${{ matrix.scenario == 'update' && format('-v UPDATE_FROM:{0}', needs.baseline.outputs.image) || '' }}
