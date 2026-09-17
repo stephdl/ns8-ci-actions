@@ -32,6 +32,10 @@ No secret is needed.
 `scripts/test-module.sh` runs the `tests/` directory of a module inside a
 Podman container, against a live NS8 cluster.
 
+It is vendored verbatim from `NethServer/ns8-github-actions@v1`, so a suite sees
+the same runner whether it is tested on DigitalOcean or on the QEMU node.
+Re-sync it rather than patching it here.
+
 A module calling `test-on-qemu.yml` with `script: ""` uses this copy and can
 **delete its own `test-module.sh`**: one less file to keep in step with the
 others. The default keeps the module's script, so nothing moves under the
@@ -52,7 +56,7 @@ run-ns8-tests <LEADER_NODE> <IMAGE_URL> [robot options...]
 
 | Variable | Default | Description |
 |---|---|---|
-| `SSH_KEYFILE` | `~/.ssh/id_rsa` | Private key that reaches the leader node |
+| `SSH_KEYFILE` | `~/.ssh/id_ecdsa` | Private key that reaches the leader node |
 | `RUN_UI_TESTS` | _(unset)_ | `true` runs the cases tagged `ui`, in the Playwright image. Anything else excludes them and uses a slim Python image |
 
 The workflow sets `RUN_UI_TESTS` from its own `run_ui_tests` input, and
