@@ -357,6 +357,7 @@ jobs:
       image_url: ${{ needs.module.outputs.image }}
       repo_ref: ${{ needs.module.outputs.sha }}
       version_tag: ${{ needs.module.outputs.tag }}
+      # The shared runner: it already knows RUN_UI_TESTS, a module's own script might not
       script: ""
       # One leg only: every leg carrying the flag comments, so a matrix would
       # post the same images twice
