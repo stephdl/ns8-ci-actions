@@ -127,7 +127,7 @@ jobs:
   baseline:
     if: ${{ contains(fromJSON(inputs.scenarios), 'update') }}
     needs: module
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runs_on }}
     outputs:
       image: ${{ steps.resolve.outputs.image }}
     steps:
