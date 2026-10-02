@@ -1,5 +1,8 @@
 # ns8-ci-actions
 
+You would prefer to use the workflow of NethServer https://github.com/NethServer/ns8-github-actions
+This repo is en readonly
+
 Reusable GitHub Actions workflows for NethServer 8 module CI.
 
 `NethServer/ns8-github-actions` covers the pipelines that run on Nethesis
